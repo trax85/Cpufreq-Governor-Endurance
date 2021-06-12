@@ -419,12 +419,8 @@ static int cpufreq_endurance_speedchange_task(void *data){
 			if((cpu == 0) || (cpu == 4)){
 			printk("cpu: %d\n",cpu);
 				cluster = get_cluster(cpu);
-				if(cluster->governor_enabled){
-					spin_lock_irqsave(&speedchange_cpumask_lock, flags);
+				if(cluster->governor_enabled)
 					govern_cpu(cluster);
-					spin_unlock_irqrestore(&speedchange_cpumask_lock,
-					       flags);
-					}
 				else
 					gov_down++;
 			}
