@@ -1,5 +1,5 @@
 /*
- *  linux/drivers/cpufreq/cpufreq_performance.c
+ *  linux/drivers/cpufreq/cpufreq_endurance.c
  *
  *  Copyright (C) 2002 - 2003 Dominik Brodowski <linux@brodo.de>
  *
@@ -408,16 +408,15 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	unsigned int cpu;
 	unsigned int gov_down = 0;
 	struct cluster_prop *cluster;
-	unsigned long flags;
 	kthread_wake = true;
 	
 	printk("CFEndurance Running wake:%d\n",kthread_wake);
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
 
-		for(cpu=0; cpu <=6; cpu++){
-			if((cpu == 0) || (cpu == 4)){
-			printk("cpu: %d\n",cpu);
+		for_each_possible_cpu(cpu){
+			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
+				printk("cpu: %d\n",cpu);
 				cluster = get_cluster(cpu);
 				if(cluster->governor_enabled)
 					govern_cpu(cluster);
@@ -425,6 +424,7 @@ static int cpufreq_endurance_speedchange_task(void *data){
 					gov_down++;
 			}
 		}
+
 		/* both clusters have disabled endurance governor */
 		if(gov_down == CLUSTER_NR)
 			goto done;
