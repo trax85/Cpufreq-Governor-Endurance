@@ -197,14 +197,17 @@ int get_sensor_dat(struct cluster_prop *cluster){
 	int ret = 0;
 	
 	ret = sensor_get_temp(SENSOR_ID,&cluster->cur_temps);
-	if(ret){
-		pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
-		cluster->cur_temps = (long)NULL; // give null to disable temperature based cpu governing
-		return 1;
-	}
+	if(ret)
+		goto fail;
+	if((cluster->cur_temps > 100) || (cluster->cur_temps < 0))
+		goto fail;
 
 	//printk(KERN_INFO"%s: sensor:%d data initilaised.\tcur_temps: %ld\n",__func__, SENSOR_ID, cluster->cur_temps);
 	return 0;
+fail:
+	pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
+	cluster->cur_temps = (long)NULL; // give null to disable temperature based cpu governing
+	return 1;	
 }
 
 /*	
