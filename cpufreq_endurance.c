@@ -72,14 +72,13 @@ int start_gov_setup(struct cpufreq_policy *);
 
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
-//static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
-/**		
-	get_cpufreq_table() initialises little and big core frequency tables.
-	@buf: a temporary buffer used to get frequncy table 
-**/
+/*		
+ * get_cpufreq_table() initialises little and big core frequency tables.
+ * @buf: a temporary buffer used to get frequncy table 
+ */
 int get_cpufreq_table(struct cpufreq_policy *policy){
 	
 	int ret = 0;
@@ -124,12 +123,12 @@ failed:
 }
 
 /*
- *	init_cpufreq_table() used to initialise the cluster core frequency into a
- *	permanent integer array table. the structure cpufreq_table is also initialised at
- *	this time. 
- *	@cpuid: contains core id
- *	@count: get the number of frequencies the respective cluster has
- *	@set: bool bit used to sort char buffer into integer array
+ * init_cpufreq_table() used to initialise the cluster core frequency into a
+ * permanent integer array table. the structure cpufreq_table is also initialised at
+ * this time. 
+ * @cpuid: contains core id
+ * @count: get the number of frequencies the respective cluster has
+ * @set: bool bit used to sort char buffer into integer array
  */
 int init_cpufreq_table(struct cpufreq_policy *policy, char *buf)
 {
@@ -172,11 +171,11 @@ int init_cpufreq_table(struct cpufreq_policy *policy, char *buf)
 }
 
 /*
- *	get_sensor_dat() get temperature reading from the desired sensor.
- *	in case of failure to get current temperature from sensor it returns true value.
+ * get_sensor_dat() get temperature reading from the desired sensor.
+ * in case of failure to get current temperature from sensor it returns true value.
  */
-int get_sensor_dat(struct cluster_prop *cluster){
-
+int get_sensor_dat(struct cluster_prop *cluster)
+{
 	int ret = 0;
 	
 	ret = sensor_get_temp(SENSOR_ID,&cluster->cur_temps);
@@ -194,12 +193,12 @@ fail:
 }
 
 /*	
- *	set_temps() records current temperature for the current cluster
- *	sets the throttle temperature for available clusters and returns true value in case of
- *	failure to get the sensor temperature.
+ * set_temps() records current temperature for the current cluster
+ * sets the throttle temperature for available clusters and returns true value in case of
+ * failure to get the sensor temperature.
  */
-int set_temps(struct cluster_prop *cluster){
-
+int set_temps(struct cluster_prop *cluster)
+{
 	int ret = 0;
 
 	if(cluster == NULL){
@@ -228,16 +227,16 @@ failed_unalloc:
 }
 
 /*	
- *	govern_cpu() calls for cpufreq mitigation based on temperature inputs from the respective sensor.
- *	this function only sends signal to do_cpufreq_mitigation() and doesn't edit/modify cpufreq_prop
- *	structure. incase of failure in returning temperature it returns true value.
+ * govern_cpu() calls for cpufreq mitigation based on temperature inputs from the respective sensor.
+ * this function only sends signal to do_cpufreq_mitigation() and doesn't edit/modify cpufreq_prop
+ * structure. incase of failure in returning temperature it returns true value.
  */
-static int govern_cpu(struct cluster_prop *cluster){
-
-	int ret = 0, i, temp;
+static int govern_cpu(struct cluster_prop *cluster)
+{
 	struct cpufreq_policy *policy = cluster->ppol;
+	int ret = 0, i, temp;
 	
-	/*	get current temperature sensor readings.	*/
+	/* get current temperature sensor readings.	*/
 	ret = get_sensor_dat(cluster);
 	if(ret)
 		goto failed;
@@ -247,8 +246,10 @@ static int govern_cpu(struct cluster_prop *cluster){
 		goto end;
 
 	/* Update current frequency if changed explicitly by user or other programs */
-	if(cluster->prev_freq != policy->max)
+	if(cluster->prev_freq != policy->max){
+			printk("Prev freq:%u changed freq:%u\n",cluster->prev_freq,policy->max);
 			do_cpufreq_mitigation(policy, cluster, UPDATE);
+	}
 		
 	/* either we have not yet reached our cluster throttle temps or we dropped below throttle temps, 
 	   so reset cluster levels and push max frequency of that cluster */
@@ -316,9 +317,9 @@ failed:
 }
 
 /*
- *	do_cpufreq_mitigation() depending on event signals from govern_cpu() it decides the throttling direction &
- *	records the current temperature of the sensor. it modifies the policy max frequency to the latest max as
- *	per the event signal recived by the function.
+ * do_cpufreq_mitigation() depending on event signals from govern_cpu() it decides the throttling direction &
+ * records the current temperature of the sensor. it modifies the policy max frequency to the latest max as
+ * per the event signal recived by the function.
  */
 int do_cpufreq_mitigation(struct cpufreq_policy *policy, 
 					struct cluster_prop *cluster, state_info event){
@@ -358,8 +359,8 @@ update:
 		cluster->cur_level = cluster->nr_levels;
 		printk("Level reset due to inaccuracies\n");
 	}
-	printk(KERN_ALERT"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,policy->max,
-					cluster->cur_level,cluster->nr_levels, policy->cpu);
+	printk(KERN_ALERT"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,
+			policy->max,cluster->cur_level,cluster->nr_levels, policy->cpu);
 	policy->max = cluster->freq_table[cluster->cur_level].frequency;
 	cluster->prev_freq = policy->max;
 	__cpufreq_driver_target(policy, policy->max,
@@ -370,9 +371,9 @@ end:
 }
 
 /*
- *	cpufreq_endurance_speedchange_task() calls the govern_cpu() function.
- *	if this function fails te governor is essentially dead, locks have been put to mitigate
- *	contention issues that may arise during execution.
+ * cpufreq_endurance_speedchange_task() calls the govern_cpu() function.
+ * if this function fails te governor is essentially dead, locks have been put to mitigate
+ * contention issues that may arise during execution.
  */
 static int cpufreq_endurance_speedchange_task(void *data){
 
@@ -415,10 +416,10 @@ done:
 }
 
 /*
- *	start_gov_setup() setups the governor.
- *	setup up the frequencytable and all related operations as its the core part, any
- *	failure here the governor may behave unpredictably so redundancies have 
- *	been added to prevent that.
+ * start_gov_setup() setups the governor.
+ * setup up the frequencytable and all related operations as its the core part, any
+ * failure here the governor may behave unpredictably so redundancies have 
+ * been added to prevent that.
  */
 int start_gov_setup(struct cpufreq_policy *policy){
 
