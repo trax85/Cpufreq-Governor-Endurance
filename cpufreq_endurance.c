@@ -39,9 +39,9 @@ struct cluster_prop {
 	unsigned short int nr_levels;		// Stores number of total levels
 	unsigned short int cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of max cpufreq avilable at the time
-	struct cpufreq_policy *ppol;
-	bool governor_enabled;
-	unsigned int freqtable[];		// Frequency table array having all frequency of the respective cluster
+	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
+	bool governor_enabled;			// Bool bit holds the state of governor on each cluster
+	struct cpufreq_frequency_table *freq_table;
 };
 
 typedef enum {
@@ -172,27 +172,8 @@ int init_cpufreq_table(struct cpufreq_policy *policy, char *buf){
 		memset(cluster_nr, 0, sizeof(struct cluster_prop) + sizeof(unsigned int)*count);
 	}
 
-	/* Sort character buffer into integer array table. */
-	count = 0;
-	for(i = 0; i <= strnlen(buf,MAX_TABLE_SIZE); i++){
-		if(*(buf + i) == ' ')
-			set = true;
-		if(set){
-			cluster_nr[num].freqtable[count] = atoi(buf+i);
-			count++;
-			set = false;
-		}
-	}
-
-#ifdef CONFIG_CPU_FREQ_GOV_ENDURANCE_DEBUG
-	// Debugging functions
-	for(i = 0; i < count; i++)
-		pr_debug(KERN_INFO"%u ",cluster_nr[num].freqtable[i]);
-	pr_debug(KERN_INFO"\n");
-#endif
-
 	cluster_nr[num].cpuid = policy->cpu;
-	cluster_nr[num].nr_levels = count - 2;
+	cluster_nr[num].nr_levels = count - 1;
 	cluster_nr[num].ppol = policy;
 	
 	/* Set initialisation done bit ,cpu ID & number of levels of respective cluster. */
@@ -387,9 +368,13 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 	cluster->prev_temps = cluster->cur_temps;
 
 update:
-	printk(KERN_ALERT"THROTTLE to %u level:%d max_lvl:%d\n",cluster->freqtable[cluster->cur_level],
-					cluster->cur_level,cluster->nr_levels);
-	policy->max = cluster->freqtable[cluster->cur_level];
+	if(cluster->cur_level > cluster->nr_levels){
+		cluster->cur_level = cluster->nr_levels;
+		printk("Level reset due to inaccuracies\n");
+	}
+	printk(KERN_ALERT"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,policy->max,
+					cluster->cur_level,cluster->nr_levels, policy->cpu);
+	policy->max = cluster->freq_table[cluster->cur_level].frequency;
 	cluster->prev_freq = policy->max;
 	__cpufreq_driver_target(policy, policy->max,
 						CPUFREQ_RELATION_H);
@@ -461,6 +446,7 @@ int start_gov_setup(struct cpufreq_policy *policy){
 		
 	cluster = get_cluster(policy->cpu);
 
+	cluster->freq_table = cpufreq_frequency_get_table(policy->cpu);
 	if(cluster)
 		do_cpufreq_mitigation(policy,cluster,RESET);
 	else
@@ -477,6 +463,12 @@ int start_gov_setup(struct cpufreq_policy *policy){
 	
 	cluster->prev_freq = policy->max;
 	cluster->governor_enabled = true;
+	// Debugging functions
+	for(i = 0; i <= cluster->nr_levels; i++)
+		printk(KERN_INFO"%u ",cluster->freq_table[i].frequency);
+	printk(KERN_INFO"\n");
+	
+	mutex_unlock(&gov_lock);
 	printk("Finished setup wake:%d\n",kthread_wake);
 	
 	/* setup kthread for endurance governing skip is it has already been setup */
