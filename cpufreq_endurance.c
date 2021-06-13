@@ -117,11 +117,10 @@ failed_inittbl:
 	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
 	kfree(buf);
-	return 0;	
+	return 1;	
 failed:
 	pr_err(KERN_WARNING"%s: Failed to alloc memory err:%d", __func__,ret);
-	return 0;
-}
+	return 1;
 }
 
 /*
