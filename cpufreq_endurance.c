@@ -406,8 +406,11 @@ static int cpufreq_endurance_speedchange_task(void *data){
 			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
 				printk("cpu: %d\n",cpu);
 				cluster = get_cluster(cpu);
-				if(cluster->governor_enabled)
+				if(cluster->governor_enabled){
+					mutex_lock(&gov_lock);
 					govern_cpu(cluster);
+					mutex_unlock(&gov_lock);
+				}
 				else
 					gov_down++;
 			}
