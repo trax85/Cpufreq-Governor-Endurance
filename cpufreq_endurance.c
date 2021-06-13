@@ -445,14 +445,15 @@ int start_gov_setup(struct cpufreq_policy *policy){
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 	
 	printk("Starting Governor for cpu:%d\n",policy->cpu);
+	mutex_lock(&gov_lock);
 	get_cpufreq_table(policy);
 	err = set_temps(get_cluster(policy->cpu));
 	if(err)
 		goto error;
-		
+	
 	cluster = get_cluster(policy->cpu);
-
 	cluster->freq_table = cpufreq_frequency_get_table(policy->cpu);
+	
 	if(cluster)
 		do_cpufreq_mitigation(policy,cluster,RESET);
 	else
@@ -504,9 +505,10 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 	struct cluster_prop *cluster;
 	switch (event) {
 	case CPUFREQ_GOV_START:
-		mutex_lock(&gov_lock);
+		/* aquire lock so that we dont overwrite critical sections which could lead to wrong 
+		   data being taken in and improper working of governor */
+		
 		init_clear = start_gov_setup(policy);
-		mutex_unlock(&gov_lock);
 	case CPUFREQ_GOV_LIMITS:
 		if(!init_clear){
 			//mutex_lock(&gov_lock);
