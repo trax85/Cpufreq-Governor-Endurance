@@ -59,6 +59,8 @@ static unsigned short int min_step = 5;		// Max throttle step limit
 static unsigned short int temp_diff = 2;
 static bool kthread_wake = false;
 
+static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
+
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *,char *);
 struct cluster_prop *get_cluster(unsigned short int);
@@ -67,8 +69,6 @@ int set_temps(struct cluster_prop *);
 int do_cpufreq_mitigation(struct cpufreq_policy *, 
 					struct cluster_prop *, state_info);
 int start_gov_setup(struct cpufreq_policy *);
-
-static struct cluster_prop *cluster_nr = NULL;
 
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
@@ -122,21 +122,6 @@ failed:
 	pr_err(KERN_WARNING"%s: Failed to alloc memory err:%d", __func__,ret);
 	return 0;
 }
-
-/*
-	get_cluster() gets pointer to the cluster depending the cpuID it recives.
-*/
-struct cluster_prop *get_cluster(unsigned short int cpuid){
-	if(cluster_nr && (cpuid <= NR_LITTLE)){
-		//printk("passing little\n");
-		return &cluster_nr[0];
-	}
-	else if(cluster_nr && (cpuid >= NR_BIG)){
-		//printk("passing big\n");
-		return &cluster_nr[1];
-	}
-	pr_err(KERN_WARNING"%s: Cluster:%d memory not allocated!\n", __func__,cpuid);
-	return NULL;
 }
 
 /*
@@ -147,34 +132,29 @@ struct cluster_prop *get_cluster(unsigned short int cpuid){
  *	@count: get the number of frequencies the respective cluster has
  *	@set: bool bit used to sort char buffer into integer array
  */
-int init_cpufreq_table(struct cpufreq_policy *policy, char *buf){
-
+int init_cpufreq_table(struct cpufreq_policy *policy, char *buf)
+{
+	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu); 
 	int count = 0,i;
-	bool set = true;
 	int num;
-	
-	if(policy->cpu <= NR_LITTLE)
-		num = 0;
-	else
-		num = 1;
 	
 	for(i = 0; i <= strnlen(buf,MAX_TABLE_SIZE); i++)
 		if( *(buf+i) == ' ')
 			count++;
 
 	/* Initialise the cluster_prop structure. */
-	if(!cluster_nr){
-		cluster_nr = kzalloc(CLUSTER_NR * (sizeof(struct cluster_prop) + sizeof(unsigned int)*count), 
+	if(!cluster){
+		cluster = kzalloc(sizeof(struct cluster_prop) + sizeof(unsigned int)*count, 
 						GFP_KERNEL);
-		if(!cluster_nr)
+		if(!cluster)
 			return -ENOMEM;
 
-		memset(cluster_nr, 0, sizeof(struct cluster_prop) + sizeof(unsigned int)*count);
+		memset(cluster, 0, sizeof(struct cluster_prop) + sizeof(unsigned int)*count);
 	}
 
-	cluster_nr[num].cpuid = policy->cpu;
-	cluster_nr[num].nr_levels = count - 1;
-	cluster_nr[num].ppol = policy;
+	cluster->cpuid = policy->cpu;
+	cluster->nr_levels = count - 1;
+	cluster->ppol = policy;
 	
 	/* Set initialisation done bit ,cpu ID & number of levels of respective cluster. */
 	if(policy->cpu <= NR_LITTLE){
@@ -185,6 +165,10 @@ int init_cpufreq_table(struct cpufreq_policy *policy, char *buf){
 		big_init_done = true;
 		pr_debug(KERN_INFO"%s: done initing big core.\n", __func__);
 	}
+	
+	for_each_cpu(i, policy->related_cpus)
+		per_cpu(cluster_nr,i) = cluster;
+		
 	return 0;
 }
 
@@ -404,9 +388,8 @@ static int cpufreq_endurance_speedchange_task(void *data){
 
 		for_each_possible_cpu(cpu){
 			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
-				printk("cpu: %d\n",cpu);
-				cluster = get_cluster(cpu);
-				if(cluster->governor_enabled){
+				cluster = per_cpu(cluster_nr, cpu);
+				if(cluster && cluster->governor_enabled){
 					mutex_lock(&gov_lock);
 					govern_cpu(cluster);
 					mutex_unlock(&gov_lock);
@@ -446,12 +429,15 @@ int start_gov_setup(struct cpufreq_policy *policy){
 	
 	printk("Starting Governor for cpu:%d\n",policy->cpu);
 	mutex_lock(&gov_lock);
-	get_cpufreq_table(policy);
-	err = set_temps(get_cluster(policy->cpu));
+	err = get_cpufreq_table(policy);
+	if(err)
+		goto error;
+		
+	cluster = per_cpu(cluster_nr,policy->cpu);
+	err = set_temps(cluster);
 	if(err)
 		goto error;
 	
-	cluster = get_cluster(policy->cpu);
 	cluster->freq_table = cpufreq_frequency_get_table(policy->cpu);
 	
 	if(cluster)
@@ -525,7 +511,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
-		cluster = get_cluster(policy->cpu);
+		cluster = per_cpu(cluster_nr,policy->cpu);
 		cluster->governor_enabled = false;
 		mutex_unlock(&gov_lock);
 		printk("Stop Governor\n");
