@@ -82,6 +82,8 @@ static struct mutex gov_lock;
 int get_cpufreq_table(struct cpufreq_policy *policy){
 	
 	int ret = 0;
+	struct cluster_prop *cluster;
+	int ret = 0,temp,i;
 	char *buf;
 
 	/*	Skip initialisation if already setup cluster frequency tables	*/
@@ -108,6 +110,34 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	ret = init_cpufreq_table(policy, buf);
 	if(ret < 0)
 		goto failed_inittbl;
+		
+	cluster = per_cpu(cluster_nr,policy->cpu);
+	if(!cluster)
+		goto failed_inittbl;
+		
+	ret = set_temps(cluster);
+	if(ret)
+		goto failed_gettbl;
+	
+	cluster->freq_table = cpufreq_frequency_get_table(policy->cpu);
+	do_cpufreq_mitigation(policy,cluster,RESET);
+	
+	if(cluster->cur_temps >= cluster->throt_temps){
+		temp = cluster->cur_temps - cluster->throt_temps;
+		if(temp)
+			temp = temp / 2;
+		printk(KERN_INFO"go down levels by:%d\n",temp);
+		for(i = 0; i <= temp; i++)
+			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
+	}
+	
+	cluster->prev_freq = policy->max;
+	cluster->governor_enabled = true;
+	
+	// Debugging functions
+	for(i = 0; i <= cluster->nr_levels; i++)
+		printk(KERN_INFO"%u ",cluster->freq_table[i].frequency);
+	printk(KERN_INFO"\n");
 
 	kfree(buf);
 	return 0;
@@ -421,45 +451,21 @@ done:
  * failure here the governor may behave unpredictably so redundancies have 
  * been added to prevent that.
  */
-int start_gov_setup(struct cpufreq_policy *policy){
-
-	int err = 0,temp ,i;
+int start_gov_setup(struct cpufreq_policy *policy)
+{
+	int err = 0;
+	
 	struct cluster_prop *cluster;
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 	
-	printk("Starting Governor for cpu:%d\n",policy->cpu);
+	printk(KERN_INFO"Starting Governor for cpu:%d\n",policy->cpu);
+	
+	/* aquire lock so that we dont overwrite critical sections which could lead to wrong 
+		   data being taken in and improper working of governor */
 	mutex_lock(&gov_lock);
 	err = get_cpufreq_table(policy);
 	if(err)
 		goto error;
-		
-	cluster = per_cpu(cluster_nr,policy->cpu);
-	err = set_temps(cluster);
-	if(err)
-		goto error;
-	
-	cluster->freq_table = cpufreq_frequency_get_table(policy->cpu);
-	
-	if(cluster)
-		do_cpufreq_mitigation(policy,cluster,RESET);
-	else
-		goto error;
-	
-	if(cluster->cur_temps >= cluster->throt_temps){
-		temp = cluster->cur_temps - cluster->throt_temps;
-		if(temp)
-			temp = temp / 2;
-		printk("go down levels by:%d\n",temp);
-		for(i = 0; i <= temp; i++)
-			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
-	}
-	
-	cluster->prev_freq = policy->max;
-	cluster->governor_enabled = true;
-	// Debugging functions
-	for(i = 0; i <= cluster->nr_levels; i++)
-		printk(KERN_INFO"%u ",cluster->freq_table[i].frequency);
-	printk(KERN_INFO"\n");
 	
 	mutex_unlock(&gov_lock);
 	printk("Finished setup wake:%d\n",kthread_wake);
