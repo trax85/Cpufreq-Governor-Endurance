@@ -41,7 +41,7 @@ struct cluster_prop {
 	unsigned int prev_freq;		// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	bool governor_enabled;			// Bool bit holds the state of governor on each cluster
-	struct cpufreq_frequency_table *freq_table;
+	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster
 };
 
 typedef enum {
@@ -145,13 +145,13 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 	struct cpufreq_frequency_table *freq_table;
 	unsigned int freqmax;
 	int i,index;
-	int num;
 	
 	freqmax = UINT_MAX;
 
 	freq_table = cpufreq_frequency_get_table(policy->cpu);
 	cpufreq_frequency_table_target(policy,freq_table,freqmax,
 				CPUFREQ_RELATION_H,&index);
+	printk(KERN_INFO"Index:%d\n",index);
 
 	/* Initialise the cluster_prop structure. */
 	if(!cluster){
@@ -383,9 +383,9 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	unsigned int cpu;
 	unsigned int gov_down = 0;
 	struct cluster_prop *cluster;
-	kthread_wake = true;
+	kthread_awake = true;
 	
-	printk(KERN_INFO"CFEndurance Running wake:%d\n",kthread_wake);
+	printk(KERN_INFO"CFEndurance Running wake:%d\n",kthread_awake);
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
 
@@ -412,8 +412,8 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	
 	return 0;
 done:
-	kthread_wake = false;
-	printk(KERN_INFO"Offlining Endurance Governor woke:%d\n",kthread_wake);
+	kthread_awake = false;
+	printk(KERN_INFO"Offlining Endurance Governor wake:%d\n",kthread_awake);
 	return 0;
 	
 }
@@ -426,10 +426,8 @@ done:
  */
 int start_gov_setup(struct cpufreq_policy *policy)
 {
-	int err = 0;
-	
-	struct cluster_prop *cluster;
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
+	int err = 0;
 	
 	printk(KERN_INFO"Starting Governor for cpu:%d\n",policy->cpu);
 	
@@ -441,10 +439,10 @@ int start_gov_setup(struct cpufreq_policy *policy)
 		goto error;
 	
 	mutex_unlock(&gov_lock);
-	printk(KERN_INFO"Finished setup wake:%d\n",kthread_wake);
+	printk(KERN_INFO"Finished setup wake:%d\n",kthread_awake);
 	
 	/* setup kthread for endurance governing skip is it has already been setup */
-	if(kthread_wake == false){
+	if(kthread_awake == false){
 		speedchange_task =
 			kthread_create(cpufreq_endurance_speedchange_task, NULL,
 				       "cfendurance");
@@ -470,20 +468,17 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 	struct cluster_prop *cluster;
 	switch (event) {
 	case CPUFREQ_GOV_START:		
-		init_clear = start_gov_setup(policy);
+		init_failed = start_gov_setup(policy);
 	case CPUFREQ_GOV_LIMITS:
-		if(init_clear){
+		if(init_failed)
 			__cpufreq_driver_target(policy, policy->max,
 						CPUFREQ_RELATION_H);
-		}
-		
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
 		cluster = per_cpu(cluster_nr,policy->cpu);
 		cluster->governor_enabled = false;
 		mutex_unlock(&gov_lock);
-		printk("Stop Governor\n");
 		break;
 	default:
 		break;
@@ -504,7 +499,6 @@ static int __init cpufreq_gov_endurance_init(void)
 {
 	mutex_init(&gov_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
-	//wake_up_process(speedchange_task);
 	return cpufreq_register_governor(&cpufreq_gov_endurance);
 }
 
