@@ -377,7 +377,7 @@ update:
 		cluster->cur_level = cluster->nr_levels;
 		printk("Level reset due to inaccuracies\n");
 	}
-	printk(KERN_ALERT"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,
+	printk(KERN_INFO"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,
 			policy->max,cluster->cur_level,cluster->nr_levels, policy->cpu);
 	policy->max = cluster->freq_table[cluster->cur_level].frequency;
 	cluster->prev_freq = policy->max;
@@ -400,7 +400,7 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	struct cluster_prop *cluster;
 	kthread_wake = true;
 	
-	printk("CFEndurance Running wake:%d\n",kthread_wake);
+	printk(KERN_INFO"CFEndurance Running wake:%d\n",kthread_wake);
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
 
@@ -428,7 +428,7 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	return 0;
 done:
 	kthread_wake = false;
-	printk("Offlining Endurance Governor woke:%d\n",kthread_wake);
+	printk(KERN_INFO"Offlining Endurance Governor woke:%d\n",kthread_wake);
 	return 0;
 	
 }
@@ -456,7 +456,7 @@ int start_gov_setup(struct cpufreq_policy *policy)
 		goto error;
 	
 	mutex_unlock(&gov_lock);
-	printk("Finished setup wake:%d\n",kthread_wake);
+	printk(KERN_INFO"Finished setup wake:%d\n",kthread_wake);
 	
 	/* setup kthread for endurance governing skip is it has already been setup */
 	if(kthread_wake == false){
@@ -470,7 +470,7 @@ int start_gov_setup(struct cpufreq_policy *policy)
 		get_task_struct(speedchange_task);
 		/* NB: wake up so the thread does not look hung to the freezer */
 		wake_up_process(speedchange_task);
-		printk("Run kthread\n");
+		printk(KERN_INFO"Run kthread\n");
 	}
 	
 	return 0;
@@ -484,20 +484,10 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 {
 	struct cluster_prop *cluster;
 	switch (event) {
-	case CPUFREQ_GOV_START:
-		/* aquire lock so that we dont overwrite critical sections which could lead to wrong 
-		   data being taken in and improper working of governor */
-		
+	case CPUFREQ_GOV_START:		
 		init_clear = start_gov_setup(policy);
 	case CPUFREQ_GOV_LIMITS:
-		if(!init_clear){
-			//mutex_lock(&gov_lock);
-			pr_debug("setting to %u kHz because of event %u\n",
-						policy->max, event);
-			//__cpufreq_driver_target(policy, policy->cur,
-			//			CPUFREQ_RELATION_H);
-			//mutex_unlock(&gov_lock);
-		}else{
+		if(init_clear){
 			__cpufreq_driver_target(policy, policy->max,
 						CPUFREQ_RELATION_H);
 		}
