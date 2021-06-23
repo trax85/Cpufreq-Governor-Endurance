@@ -359,10 +359,6 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 	cluster->prev_temps = cluster->cur_temps;
 
 update:
-	if(cluster->cur_level > cluster->nr_levels){
-		cluster->cur_level = cluster->nr_levels;
-		printk("Level reset due to inaccuracies\n");
-	}
 	cluster->max_freq = policy->max;
 	printk(KERN_INFO"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,
 			policy->max,cluster->cur_level,cluster->nr_levels, policy->cpu);
