@@ -52,12 +52,10 @@ typedef enum {
 	UPDATE
 }state_info;
 
-static bool little_init_done =  false;
-static bool big_init_done = false;
-static bool init_clear = 0;
+static bool init_failed = 0;
 static unsigned short int min_step = 5;		// Max throttle step limit
-static unsigned short int temp_diff = 2;
-static bool kthread_wake = false;
+static unsigned short int temp_diff = 2;		// Temperature Diffrence
+static bool kthread_awake = false;
 
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 
@@ -84,11 +82,10 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	struct cluster_prop *cluster;
 	int ret = 0,temp,i;
 	
-	/*	Skip initialisation if already setup cluster frequency tables	*/
-	if (little_init_done && (policy->cpu <= NR_LITTLE))
-		return 0;
-	if(big_init_done && (policy->cpu >= NR_BIG))
-		return 0;
+	/* If structure already initialized exit out */
+	cluster = per_cpu(cluster_nr,policy->cpu);
+	if(cluster)
+		goto setup_done;
 	
 	pr_debug(KERN_INFO"%s: starting frequency table init of core:%d\n", __func__,policy->cpu);
 	
@@ -117,22 +114,20 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 	}
 	
-	cluster->prev_freq = policy->max;
-	cluster->governor_enabled = true;
-	
 	// Debugging functions
 	for(i = 0; i <= cluster->nr_levels; i++)
 		printk(KERN_INFO"%u ",cluster->freq_table[i].frequency);
 	printk(KERN_INFO"\n");
 
+setup_done:
+	cluster->prev_freq = policy->max;
+	cluster->governor_enabled = true;
+	printk(KERN_INFO"governor state:%d",cluster->governor_enabled);
 	return 0;
 
 failed_inittbl:
 	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
-	return 1;	
-failed:
-	pr_err(KERN_WARNING"%s: Failed to alloc memory err:%d", __func__,ret);
 	return 1;
 }
 
@@ -171,16 +166,6 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 	cluster->cpuid = policy->cpu;
 	cluster->nr_levels = index;
 	cluster->ppol = policy;
-	
-	/* Set initialisation done bit ,cpu ID & number of levels of respective cluster. */
-	if(policy->cpu <= NR_LITTLE){
-		little_init_done = true;
-		pr_debug(KERN_INFO"%s: done initing little core.\n", __func__);
-	}
-	if(policy->cpu >= NR_BIG){
-		big_init_done = true;
-		pr_debug(KERN_INFO"%s: done initing big core.\n", __func__);
-	}
 	
 	for_each_cpu(i, policy->related_cpus)
 		per_cpu(cluster_nr,i) = cluster;
