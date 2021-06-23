@@ -405,8 +405,8 @@ static int cpufreq_endurance_speedchange_task(void *data){
 		if(gov_down == CLUSTER_NR)
 			goto done;
 		gov_down = 0;
-		msleep(nap_time_ms);
 		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(msecs_to_jiffies(nap_time_ms));
 	}
 	
 	return 0;
