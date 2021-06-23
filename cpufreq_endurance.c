@@ -38,7 +38,8 @@ struct cluster_prop {
 	unsigned short int throt_temps;	// Throttle temperature of the respective cluster
 	unsigned short int nr_levels;		// Stores number of total levels
 	unsigned short int cur_level;		// Stores current level of throttle
-	unsigned int prev_freq;		// Holds memory of max cpufreq avilable at the time
+	unsigned int prev_freq;		// Holds memory of previous cpufreq
+	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	bool governor_enabled;			// Bool bit holds the state of governor on each cluster
 	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster
@@ -120,7 +121,7 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	printk(KERN_INFO"\n");
 
 setup_done:
-	cluster->prev_freq = policy->max;
+	cluster->max_freq = cluster->prev_freq = policy->max;
 	cluster->governor_enabled = true;
 	printk(KERN_INFO"governor state:%d",cluster->governor_enabled);
 	return 0;
@@ -249,8 +250,8 @@ static int govern_cpu(struct cluster_prop *cluster)
 		goto end;
 
 	/* Update current frequency if changed explicitly by user or other programs */
-	if(cluster->prev_freq != policy->max){
-			printk("Prev freq:%u changed freq:%u\n",cluster->prev_freq,policy->max);
+	if(cluster->max_freq != policy->max){
+			printk("Prev max freq:%u New max freq:%u\n",cluster->max_freq,policy->max);
 			do_cpufreq_mitigation(policy, cluster, UPDATE);
 	}
 		
@@ -362,6 +363,7 @@ update:
 		cluster->cur_level = cluster->nr_levels;
 		printk("Level reset due to inaccuracies\n");
 	}
+	cluster->max_freq = policy->max;
 	printk(KERN_INFO"THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d\n",cluster->freq_table[cluster->cur_level].frequency,
 			policy->max,cluster->cur_level,cluster->nr_levels, policy->cpu);
 	policy->max = cluster->freq_table[cluster->cur_level].frequency;
