@@ -62,7 +62,7 @@ static bool kthread_wake = false;
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 
 int get_cpufreq_table(struct cpufreq_policy *);
-int init_cpufreq_table(struct cpufreq_policy *,char *);
+int init_cpufreq_table(struct cpufreq_policy *);
 struct cluster_prop *get_cluster(unsigned short int);
 int get_sensor_dat(struct cluster_prop *);
 int set_temps(struct cluster_prop *);
@@ -81,11 +81,9 @@ static struct mutex gov_lock;
  */
 int get_cpufreq_table(struct cpufreq_policy *policy){
 	
-	int ret = 0;
 	struct cluster_prop *cluster;
 	int ret = 0,temp,i;
-	char *buf;
-
+	
 	/*	Skip initialisation if already setup cluster frequency tables	*/
 	if (little_init_done && (policy->cpu <= NR_LITTLE))
 		return 0;
@@ -93,21 +91,9 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 		return 0;
 	
 	pr_debug(KERN_INFO"%s: starting frequency table init of core:%d\n", __func__,policy->cpu);
-	/*	Initialise temporary buffer used to get cluster frequency table	*/
-	buf = kzalloc(MAX_TABLE_SIZE * sizeof(char),GFP_KERNEL);
-	if (!buf)
-		goto failed;
-		
-	/*	Get respective cluster frequency table	*/
-	ret = cpufreq_freq_attr_scaling_available_freqs.show(policy,buf);
-	if(!ret){
-		pr_err(KERN_WARNING"%s:Failed to get core:%d frequency table.\n", __func__,policy->cpu);
-		goto failed_gettbl;
-	}
-	pr_debug("%s: cpufreq table:%s\n", __func__,buf);
 	
-	/*	Push cluster frequency buffer into array table	*/
-	ret = init_cpufreq_table(policy, buf);
+	/* Start cpu frequency table initialization */
+	ret = init_cpufreq_table(policy);
 	if(ret < 0)
 		goto failed_inittbl;
 		
@@ -139,13 +125,11 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 		printk(KERN_INFO"%u ",cluster->freq_table[i].frequency);
 	printk(KERN_INFO"\n");
 
-	kfree(buf);
 	return 0;
 
 failed_inittbl:
 	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
-	kfree(buf);
 	return 1;	
 failed:
 	pr_err(KERN_WARNING"%s: Failed to alloc memory err:%d", __func__,ret);
@@ -157,31 +141,35 @@ failed:
  * permanent integer array table. the structure cpufreq_table is also initialised at
  * this time. 
  * @cpuid: contains core id
- * @count: get the number of frequencies the respective cluster has
+ * @index: get the number of frequencies the respective cluster has
  * @set: bool bit used to sort char buffer into integer array
  */
-int init_cpufreq_table(struct cpufreq_policy *policy, char *buf)
+int init_cpufreq_table(struct cpufreq_policy *policy)
 {
-	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu); 
-	int count = 0,i;
+	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu);
+	struct cpufreq_frequency_table *freq_table;
+	unsigned int freqmax;
+	int i,index;
 	int num;
 	
-	for(i = 0; i <= strnlen(buf,MAX_TABLE_SIZE); i++)
-		if( *(buf+i) == ' ')
-			count++;
+	freqmax = UINT_MAX;
+
+	freq_table = cpufreq_frequency_get_table(policy->cpu);
+	cpufreq_frequency_table_target(policy,freq_table,freqmax,
+				CPUFREQ_RELATION_H,&index);
 
 	/* Initialise the cluster_prop structure. */
 	if(!cluster){
-		cluster = kzalloc(sizeof(struct cluster_prop) + sizeof(unsigned int)*count, 
+		cluster = kzalloc(sizeof(struct cluster_prop) + sizeof(unsigned int)*index, 
 						GFP_KERNEL);
 		if(!cluster)
 			return -ENOMEM;
 
-		memset(cluster, 0, sizeof(struct cluster_prop) + sizeof(unsigned int)*count);
+		memset(cluster, 0, sizeof(struct cluster_prop) + sizeof(unsigned int)*index);
 	}
 
 	cluster->cpuid = policy->cpu;
-	cluster->nr_levels = count - 1;
+	cluster->nr_levels = index;
 	cluster->ppol = policy;
 	
 	/* Set initialisation done bit ,cpu ID & number of levels of respective cluster. */
@@ -380,7 +368,7 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 		default:
 			break;
 	}
-	printk(KERN_ALERT"cur_temps:%ld throt_temps:%d prev_temps:%ld\n",cluster->cur_temps,cluster->throt_temps,
+	printk(KERN_INFO"cur_temps:%ld throt_temps:%d prev_temps:%ld\n",cluster->cur_temps,cluster->throt_temps,
 					cluster->prev_temps);
 	cluster->prev_temps = cluster->cur_temps;
 
