@@ -54,6 +54,7 @@ typedef enum {
 }state_info;
 
 static bool init_failed = 0;
+unsigned int nap_time_ms = 1500;
 static unsigned short int min_step = 5;		// Max throttle step limit
 static unsigned short int temp_diff = 2;		// Temperature Diffrence
 static bool kthread_awake = false;
@@ -404,7 +405,7 @@ static int cpufreq_endurance_speedchange_task(void *data){
 		if(gov_down == CLUSTER_NR)
 			goto done;
 		gov_down = 0;
-		msleep(1500);
+		msleep(nap_time_ms);
 		set_current_state(TASK_INTERRUPTIBLE);
 	}
 	
