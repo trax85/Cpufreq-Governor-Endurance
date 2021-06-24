@@ -99,11 +99,15 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	cluster = per_cpu(cluster_nr,policy->cpu);
 	if(!cluster)
 		goto failed_inittbl;
-		
+	
+	/* Cluster temprature initialization */
 	ret = set_temps(cluster);
 	if(ret)
 		goto failed_gettbl;
 	
+	/* Cluster set initial frequency mitigation state before handover to
+	 * speedchange_task() thread for rest of cpu governing tasks.
+	 */
 	do_cpufreq_mitigation(policy,cluster,RESET);
 	
 	if(cluster->cur_temps >= cluster->throt_temps){
@@ -151,6 +155,7 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 	
 	freqmax = UINT_MAX;
 
+	/* Get Highest Frequency Index in array */
 	freq_table = cpufreq_frequency_get_table(policy->cpu);
 	cpufreq_frequency_table_target(policy,freq_table,freqmax,
 				CPUFREQ_RELATION_H,&index);
@@ -171,6 +176,7 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 	cluster->nr_levels = index;
 	cluster->ppol = policy;
 	
+	/* assign cluster -> cluster_nr for each avilable core in that cluster */
 	for_each_cpu(i, policy->related_cpus)
 		per_cpu(cluster_nr,i) = cluster;
 		
