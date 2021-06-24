@@ -104,7 +104,6 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	if(ret)
 		goto failed_gettbl;
 	
-	cluster->freq_table = cpufreq_frequency_get_table(policy->cpu);
 	do_cpufreq_mitigation(policy,cluster,RESET);
 	
 	if(cluster->cur_temps >= cluster->throt_temps){
@@ -157,14 +156,15 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 
 	/* Initialise the cluster_prop structure. */
 	if(!cluster){
-		cluster = kzalloc(sizeof(struct cluster_prop) + sizeof(unsigned int)*index, 
+		cluster = kzalloc(sizeof(struct cluster_prop), 
 						GFP_KERNEL);
 		if(!cluster)
 			return -ENOMEM;
 
-		memset(cluster, 0, sizeof(struct cluster_prop) + sizeof(unsigned int)*index);
+		memset(cluster, 0, sizeof(struct cluster_prop));
 	}
-
+	
+	cluster->freq_table = freq_table;
 	cluster->cpuid = policy->cpu;
 	cluster->nr_levels = index;
 	cluster->ppol = policy;
