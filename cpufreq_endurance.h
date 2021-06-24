@@ -21,7 +21,6 @@ static unsigned int debug = 1;
 /* Main Function prototypes */
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *);
-struct cluster_prop *get_cluster(unsigned short int);
 static inline int get_sensor_dat(struct cluster_prop *);
 int set_temps(struct cluster_prop *);
 int do_cpufreq_mitigation(struct cpufreq_policy *, 
