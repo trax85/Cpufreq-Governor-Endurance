@@ -22,7 +22,7 @@ static unsigned int debug = 1;
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *);
 static inline int get_sensor_dat(struct cluster_prop *);
-int set_temps(struct cluster_prop *);
+int set_temps(struct cluster_prop *, unsigned int);
 int do_cpufreq_mitigation(struct cpufreq_policy *, 
 					struct cluster_prop *, state_info);
 int start_gov_setup(struct cpufreq_policy *);

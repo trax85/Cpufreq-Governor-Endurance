@@ -23,7 +23,6 @@
 #include "cpufreq_endurance.h"
 
 struct cluster_prop {
-	unsigned short int cpuid;		// Stores starting cpu ID of the respective cluster
 	long int cur_temps;			// Present sensor temperature in Celsius
 	long int prev_temps;			// Previous sensor temperature in Celsius
 	unsigned short int throt_temps;	// Throttle temperature of the respective cluster
@@ -78,12 +77,12 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	if(ret < 0)
 		goto failed_inittbl;
 		
-	cluster = per_cpu(cluster_nr,policy->cpu);
+	cluster = per_cpu(cluster_nr, policy->cpu);
 	if(!cluster)
 		goto failed_inittbl;
 	
 	/* Cluster temprature initialization */
-	ret = set_temps(cluster);
+	ret = set_temps(cluster, policy->cpu);
 	if(ret)
 		goto failed_gettbl;
 	
@@ -121,7 +120,6 @@ failed_gettbl:
 }
 
 /*
- * init_cpufreq_table() used to initialise the cluster core frequency into a
  * permanent integer array table. the structure cpufreq_table is also initialised at
  * this time. 
  * @cpuid: contains core id
@@ -154,7 +152,6 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 	}
 	
 	cluster->freq_table = freq_table;
-	cluster->cpuid = policy->cpu;
 	cluster->nr_levels = index;
 	cluster->ppol = policy;
 	
@@ -191,12 +188,13 @@ fail:
  * sets the throttle temperature for available clusters and returns true value in case of
  * failure to get the sensor temperature.
  */
-int set_temps(struct cluster_prop *cluster)
+int set_temps(struct cluster_prop *cluster, unsigned int cpu)
 {
 	int ret = 0;
 
 	if(cluster == NULL){
 		pr_err(KERN_WARNING"%s: core: %d table hasn't been initialised or has failed.\n", __func__, cluster->cpuid);
+		pr_err(KERN_WARNING"%s: core: %d table hasn't been initialised or has failed.\n", __func__, cpu);
 		goto failed_unalloc;
 	}
 	else{
@@ -207,9 +205,9 @@ int set_temps(struct cluster_prop *cluster)
 		cluster->prev_temps = cluster->cur_temps;
 		
 		/* Initialise throttle temperature of big and little cluster */
-		if(cluster->cpuid <= NR_LITTLE)
+		if(cpu <= NR_LITTLE)
 			cluster->throt_temps = THROTTLE_TEMP_LITTLE;
-		else if(cluster->cpuid >= NR_BIG)
+		else if(cpu >= NR_BIG)
 			cluster->throt_temps = THROTTLE_TEMP_BIG;
 	}
 	return 0;
