@@ -120,11 +120,13 @@ failed_gettbl:
 }
 
 /*
- * permanent integer array table. the structure cpufreq_table is also initialised at
- * this time. 
- * @cpuid: contains core id
+ * init_cpufreq_table() initilizeses the the cluster_nr structure 
+ * and assigns it to all cores of that cluster and initlises few structure members.
+ * 
+ * @nr_levels: total number of levels or highest index of frequency array
+ * @freq_table: holds pointer to frequency table data 
  * @index: get the number of frequencies the respective cluster has
- * @set: bool bit used to sort char buffer into integer array
+ * @ppol: holds the pointer to policy cluster of the respective cluster
  */
 int init_cpufreq_table(struct cpufreq_policy *policy)
 {
@@ -193,7 +195,6 @@ int set_temps(struct cluster_prop *cluster, unsigned int cpu)
 	int ret = 0;
 
 	if(cluster == NULL){
-		pr_err(KERN_WARNING"%s: core: %d table hasn't been initialised or has failed.\n", __func__, cluster->cpuid);
 		pr_err(KERN_WARNING"%s: core: %d table hasn't been initialised or has failed.\n", __func__, cpu);
 		goto failed_unalloc;
 	}
