@@ -22,27 +22,6 @@
 #include <linux/kthread.h>
 #include "cpufreq_endurance.h"
 
-struct cluster_prop {
-	long int cur_temps;			// Present sensor temperature in Celsius
-	long int prev_temps;			// Previous sensor temperature in Celsius
-	unsigned short int throt_temps;	// Throttle temperature of the respective cluster
-	unsigned short int nr_levels;		// Stores number of total levels
-	unsigned short int cur_level;		// Stores current level of throttle
-	unsigned int prev_freq;		// Holds memory of previous cpufreq
-	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
-	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
-	bool governor_enabled;			// Bool bit holds the state of governor on each cluster
-	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster
-};
-
-typedef enum {
-	NO_CHANGE = 0,
-	THROTTLE_UP,
-	THROTTLE_DOWN,
-	RESET,
-	UPDATE
-}state_info;
-
 static bool init_failed = 0;
 unsigned int nap_time_ms = 2000;			// Governor sleep Timeout in millisecond
 static unsigned short int min_step = 5;		// Max throttle step limit
