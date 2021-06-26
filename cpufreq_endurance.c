@@ -301,9 +301,6 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 			cluster->cur_level = cluster->nr_levels;
 			PDEBUG("RESET");
 			break;
-		case NO_CHANGE:
-			PDEBUG("NO_CHANGE");
-			goto end;
 		case THROTTLE_DOWN:
 			if((cluster->cur_level > (cluster->cur_level - min_step)) && (cluster->cur_level != 0)){
 			cluster->cur_level--;
