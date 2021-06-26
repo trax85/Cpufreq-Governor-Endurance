@@ -23,7 +23,7 @@
 #include "cpufreq_endurance.h"
 
 static bool init_failed = 0;
-unsigned int nap_time_ms = 2000;			// Governor sleep Timeout in millisecond
+unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
 static unsigned short int min_step = 5;		// Max throttle step limit
 static unsigned short int temp_diff = 2;		// Temperature Diffrence
 static bool kthread_awake = false;
