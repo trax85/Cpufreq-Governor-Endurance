@@ -43,6 +43,7 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	struct cluster_prop *cluster;
 	int ret = 0,i;
 	
+	mutex_lock(&gov_lock);
 	/* If structure already initialized exit out */
 	cluster = per_cpu(cluster_nr,policy->cpu);
 	if(cluster)
@@ -79,11 +80,13 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 setup_done:
 	cluster->governor_enabled = true;
 	PDEBUG("governor state:%d",cluster->governor_enabled);
+	mutex_unlock(&gov_lock);
 	return 0;
 
 failed_inittbl:
 	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
+	mutex_unlock(&gov_lock);
 	return 1;
 }
 
@@ -365,9 +368,7 @@ static int cpufreq_endurance_speedchange_task(void *data){
 			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
 				cluster = per_cpu(cluster_nr, cpu);
 				if(cluster && cluster->governor_enabled){
-					mutex_lock(&gov_lock);
 					govern_cpu(cluster);
-					mutex_unlock(&gov_lock);
 				}
 				else
 					gov_down++;
@@ -405,12 +406,11 @@ int start_gov_setup(struct cpufreq_policy *policy)
 	
 	/* aquire lock so that we dont overwrite critical sections which could lead to wrong 
 		   data being taken in and improper working of governor */
-	mutex_lock(&gov_lock);
+	
 	err = get_cpufreq_table(policy);
 	if(err)
 		goto error;
 	
-	mutex_unlock(&gov_lock);
 	PDEBUG("Finished setup wake:%d",kthread_awake);
 	
 	/* setup kthread for endurance governing skip is it has already been setup */
