@@ -34,7 +34,6 @@ static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 static struct task_struct *speedchange_task;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
-
 /*		
  * get_cpufreq_table() initialises little and big core frequency tables.
  * @buf: a temporary buffer used to get frequncy table 
@@ -42,7 +41,7 @@ static struct mutex gov_lock;
 int get_cpufreq_table(struct cpufreq_policy *policy){
 	
 	struct cluster_prop *cluster;
-	int ret = 0,temp,i;
+	int ret = 0,i;
 	
 	/* If structure already initialized exit out */
 	cluster = per_cpu(cluster_nr,policy->cpu);
@@ -65,29 +64,19 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	if(ret)
 		goto failed_gettbl;
 	
-	/* Cluster set initial frequency mitigation state before handover to
-	 * speedchange_task() thread for rest of cpu governing tasks.
+	/* Cluster set initial frequency mitigation settings and parameters 
+	 * before handing over to speedchange_task() thread for rest of cpu governing tasks.
 	 */
-	do_cpufreq_mitigation(policy,cluster,RESET);
-	
-	if(cluster->cur_temps >= cluster->throt_temps){
-		temp = cluster->cur_temps - cluster->throt_temps;
-		if(temp)
-			temp = temp / 2;
-		PDEBUG("go down levels by:%d",temp);
-		for(i = 0; i <= temp; i++)
-			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
-	}
+	cfe_reset_params(policy, cluster);
 	
 	// Debugging functions
-	if(debug){
+	if(debug == 1){
 		for(i = 0; i <= cluster->nr_levels; i++)
 			PDEBUG("%u ",cluster->freq_table[i].frequency);
 		PDEBUG("\n");
 	}
 
 setup_done:
-	cluster->max_freq = cluster->prev_freq = policy->max;
 	cluster->governor_enabled = true;
 	PDEBUG("governor state:%d",cluster->governor_enabled);
 	return 0;
@@ -111,16 +100,10 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu);
 	struct cpufreq_frequency_table *freq_table;
-	unsigned int freqmax;
-	int i,index;
-	
-	freqmax = UINT_MAX;
+	int i;
 
 	/* Get Highest Frequency Index in array */
 	freq_table = cpufreq_frequency_get_table(policy->cpu);
-	cpufreq_frequency_table_target(policy,freq_table,freqmax,
-				CPUFREQ_RELATION_H,&index);
-	PDEBUG("Index:%d",index);
 
 	/* Initialise the cluster_prop structure. */
 	if(!cluster){
@@ -132,15 +115,43 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 		memset(cluster, 0, sizeof(struct cluster_prop));
 	}
 	
-	cluster->freq_table = freq_table;
-	cluster->nr_levels = index;
-	cluster->ppol = policy;
-	
 	/* assign cluster -> cluster_nr for each avilable core in that cluster */
 	for_each_cpu(i, policy->related_cpus)
 		per_cpu(cluster_nr,i) = cluster;
 		
+	cluster->freq_table = freq_table;
+	cluster->ppol = policy;
+		
 	return 0;
+}
+/*
+*/
+void cfe_reset_params(struct cpufreq_policy *policy, struct cluster_prop *cluster)
+{
+	int i,temp,index = 0;
+	
+	if(!cluster)
+		return;
+		
+	while(cluster->freq_table[index].frequency < policy->max)
+		index++;
+	
+	PDEBUG("Reseting Index to:%d",index);
+	
+	cluster->cur_level = cluster->nr_levels = index;
+	cluster->max_freq = cluster->prev_freq = policy->max;
+	cluster->prev_temps = cluster->cur_temps;
+	
+	if(cluster->cur_temps >= cluster->throt_temps){
+		temp = cluster->cur_temps - cluster->throt_temps;
+		if(temp)
+			temp = temp / 2;
+		PDEBUG("go down levels by:%d",temp);
+		for(i = 0; i <= temp; i++)
+			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
+	}
+	else
+		do_cpufreq_mitigation(policy, cluster, UPDATE);
 }
 
 /*
@@ -217,10 +228,10 @@ static int govern_cpu(struct cluster_prop *cluster)
 	if((cluster->cur_level == min_step) && (cluster->cur_temps >= cluster->prev_temps))
 		goto end;
 
-	/* Update current frequency if changed explicitly by user or other programs */
-	if(cluster->max_freq != policy->max){
-			PDEBUG("Prev max freq:%u New max freq:%u",cluster->max_freq,policy->max);
-			do_cpufreq_mitigation(policy, cluster, UPDATE);
+	/* Reset current/max frequency if changed explicitly by scripts, programs or if the governor was restarted */
+	if((cluster->max_freq != policy->max) || (cluster->prev_freq != policy->cur)){
+			PDEBUG("Prev freq:%u Cur Freq:%u New freq:%u",cluster->max_freq,policy->cur,policy->max);
+			cfe_reset_params(policy, cluster);
 	}
 		
 	/* either we have not yet reached our cluster throttle temps or we dropped below throttle temps, 
@@ -323,16 +334,14 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 					cluster->prev_temps);
 	cluster->prev_temps = cluster->cur_temps;
 
-update:
-	cluster->max_freq = policy->max;
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
-			policy->max,cluster->cur_level,cluster->nr_levels, policy->cpu);
-	policy->max = cluster->freq_table[cluster->cur_level].frequency;
-	cluster->prev_freq = policy->max;
-	__cpufreq_driver_target(policy, policy->max,
-						CPUFREQ_RELATION_H);
+			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
 
-end:
+update:
+	policy->cur = cluster->freq_table[cluster->cur_level].frequency;
+	cluster->prev_freq = policy->cur;
+	__cpufreq_driver_target(policy, policy->cur,
+						CPUFREQ_RELATION_H);
 	return 0;
 }
 
