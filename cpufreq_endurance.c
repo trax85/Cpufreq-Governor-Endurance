@@ -434,6 +434,20 @@ error:
 	return 1;
 }
 
+/* 
+ *cfe_cleanup() dealloctates all structures before exiting for each cluster
+ */
+static void cfe_cleanup(void){
+	unsigned int cpu;
+	struct cluster_prop *cluster = NULL;
+	
+	for_each_possible_cpu(cpu){
+		cluster = per_cpu(cluster_nr,cpu);
+		if(cluster)
+			kfree(cluster);
+	}
+}
+
 static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 					unsigned int event)
 {
@@ -478,6 +492,7 @@ static void __exit cpufreq_gov_endurance_exit(void)
 {
 	kthread_stop(speedchange_task);
 	put_task_struct(speedchange_task);
+	cfe_cleanup();
 	cpufreq_unregister_governor(&cpufreq_gov_endurance);
 }
 
