@@ -78,7 +78,7 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	}
 
 setup_done:
-	cluster->governor_enabled = true;
+	governor_enabled++;
 	PDEBUG("governor state:%d",cluster->governor_enabled);
 	mutex_unlock(&gov_lock);
 	return 0;
@@ -363,22 +363,19 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	PDEBUG("CFEndurance Running wake:%d",kthread_awake);
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
-
+		if(!governor_enabled)
+			goto done;
+			
 		for_each_possible_cpu(cpu){
 			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
 				cluster = per_cpu(cluster_nr, cpu);
-				if(cluster && cluster->governor_enabled){
+				if(cluster){
 					govern_cpu(cluster);
 				}
-				else
-					gov_down++;
 			}
 		}
 
 		/* both clusters have disabled endurance governor */
-		if(gov_down == CLUSTER_NR)
-			goto done;
-		gov_down = 0;
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(nap_time_ms));
 	}
@@ -463,7 +460,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
 		cluster = per_cpu(cluster_nr,policy->cpu);
-		cluster->governor_enabled = false;
+		governor_enabled--;
 		mutex_unlock(&gov_lock);
 		break;
 	default:

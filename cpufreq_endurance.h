@@ -27,7 +27,6 @@ struct cluster_prop {
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
-	bool governor_enabled;			// Bool bit holds the state of governor on each cluster
 	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster
 };
 
