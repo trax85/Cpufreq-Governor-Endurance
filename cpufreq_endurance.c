@@ -78,6 +78,8 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	}
 
 setup_done:
+	/* reassign as the address changes after resume/suspend */
+	cluster->ppol = policy;
 	governor_enabled++;
 	PDEBUG("governor state:%d",cluster->governor_enabled);
 	mutex_unlock(&gov_lock);
@@ -123,7 +125,6 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 		per_cpu(cluster_nr,i) = cluster;
 		
 	cluster->freq_table = freq_table;
-	cluster->ppol = policy;
 		
 	return 0;
 }
