@@ -19,8 +19,6 @@ static unsigned int debug = 1;
 #define CLUSTER_NR 2
 
 struct cluster_prop {
-	long int cur_temps;			// Present sensor temperature in Celsius
-	long int prev_temps;			// Previous sensor temperature in Celsius
 	unsigned short int throt_temps;	// Throttle temperature of the respective cluster
 	unsigned short int nr_levels;		// Stores number of total levels
 	unsigned short int cur_level;		// Stores current level of throttle
@@ -28,6 +26,11 @@ struct cluster_prop {
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster
+};
+
+struct sensor_monitor {
+	long int cur_temps;			// Present sensor temperature in Celsius
+	long int prev_temps;			// Previous sensor temperature in Celsius
 };
 
 typedef enum {

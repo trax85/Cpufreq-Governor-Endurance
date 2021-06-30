@@ -29,7 +29,7 @@ static unsigned short int temp_diff = 2;		// Temperature Diffrence
 static bool kthread_awake = false;
 
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
-
+static struct sensor_monitor *therm_monitor;
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
 static spinlock_t speedchange_cpumask_lock;
@@ -119,7 +119,14 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 
 		memset(cluster, 0, sizeof(struct cluster_prop));
 	}
-	
+	if(!therm_monitor){
+		therm_monitor = kzalloc(sizeof(struct sensor_monitor), 
+						GFP_KERNEL);
+		if(!therm_monitor)
+			return -ENOMEM;
+
+		memset(therm_monitor, 0, sizeof(struct sensor_monitor));
+	}
 	/* assign cluster -> cluster_nr for each avilable core in that cluster */
 	for_each_cpu(i, policy->related_cpus)
 		per_cpu(cluster_nr,i) = cluster;
@@ -144,10 +151,10 @@ void cfe_reset_params(struct cpufreq_policy *policy, struct cluster_prop *cluste
 	
 	cluster->cur_level = cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
-	cluster->prev_temps = cluster->cur_temps;
+	therm_monitor->prev_temps = therm_monitor->cur_temps;
 	
-	if(cluster->cur_temps >= cluster->throt_temps){
-		temp = cluster->cur_temps - cluster->throt_temps;
+	if(cluster->therm_monitor >= cluster->throt_temps){
+		temp = therm_monitor->cur_temps - cluster->throt_temps;
 		if(temp)
 			temp = temp / 2;
 		PDEBUG("go down levels by:%d",temp);
@@ -166,16 +173,16 @@ static inline int get_sensor_dat(struct cluster_prop *cluster)
 {
 	int ret = 0;
 	
-	ret = sensor_get_temp(SENSOR_ID,&cluster->cur_temps);
+	ret = sensor_get_temp(SENSOR_ID,&therm_monitor->cur_temps);
 	if(ret)
 		goto fail;
-	if((cluster->cur_temps > 100) || (cluster->cur_temps < 0))
+	if((therm_monitor->cur_temps > 100) || (therm_monitor->cur_temps < 0))
 		goto fail;
 
 	return 0;
 fail:
 	pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
-	cluster->cur_temps = (long)NULL; // give null to disable temperature based cpu governing
+	therm_monitor->cur_temps = (long)NULL; // give null to disable temperature based cpu governing
 	return 1;	
 }
 
@@ -197,7 +204,7 @@ int set_temps(struct cluster_prop *cluster, unsigned int cpu)
 		if(ret)
 			goto failed_sens;
 
-		cluster->prev_temps = cluster->cur_temps;
+		therm_monitor->prev_temps = therm_monitor->cur_temps;
 		
 		/* Initialise throttle temperature of big and little cluster */
 		if(cpu <= NR_LITTLE)
@@ -229,7 +236,7 @@ static int govern_cpu(struct cluster_prop *cluster)
 		goto failed;
 	
 	/* we have reached max throttle frequency and going lower will only make the device sluggish so maintain frequency */
-	if((cluster->cur_level == min_step) && (cluster->cur_temps >= cluster->prev_temps))
+	if((cluster->cur_level == min_step) && (therm_monitor->cur_temps >= therm_monitor->prev_temps))
 		goto end;
 
 	/* Reset current/max frequency if changed explicitly by scripts, programs or if the governor was restarted */
@@ -240,9 +247,9 @@ static int govern_cpu(struct cluster_prop *cluster)
 		
 	/* either we have not yet reached our cluster throttle temps or we dropped below throttle temps, 
 	   so reset cluster levels and push max frequency of that cluster */
-	if(cluster->cur_temps < cluster->throt_temps){
+	if(cluster->therm_monitor < cluster->throt_temps){
 		PDEBUG("Currrent temps lower than throttle temps");
-		if((cluster->prev_temps < cluster->throt_temps) && (cluster->cur_level == cluster->nr_levels))
+		if((therm_monitor->prev_temps < cluster->throt_temps) && (cluster->cur_level == cluster->nr_levels))
 			goto end;
 		else
 			do_cpufreq_mitigation(policy, cluster, RESET);
@@ -253,21 +260,21 @@ static int govern_cpu(struct cluster_prop *cluster)
 	   2.temps have gone past throttle points
 	   3.temps have started drop to downward slope 
 	   4-5.temps reported are inconsistent */
-	else if(cluster->cur_temps >= cluster->throt_temps){
+	else if(cluster->therm_monitor >= cluster->throt_temps){
 		PDEBUG("Current temps higher than throttle temps");
-		if((cluster->cur_temps == cluster->throt_temps) && (cluster->cur_temps > cluster->prev_temps))
+		if((cluster->therm_monitor == cluster->throt_temps) && (therm_monitor->cur_temps > therm_monitor->prev_temps))
 			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 	
 		/* temps have gone past throttle points and now frequency of respective cluster is being mitigated down 
 	   	   through multiple levels depending on how much the temps have gone up since last recorded. */
-		else if(cluster->cur_temps == (cluster->prev_temps + temp_diff)){
+		else if(therm_monitor->cur_temps == (therm_monitor->prev_temps + temp_diff)){
 			PDEBUG("current temps higher than previous");
 			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 		}
 		
 		/* temps have started to drop either due to low avg load or idleing of the cluster,
 	   	   so start throttling the core up by one level as the temps drop. */
-		else if((cluster->cur_temps + temp_diff) == cluster->prev_temps){
+		else if((therm_monitor->cur_temps + temp_diff) == therm_monitor->prev_temps){
 			PDEBUG("current temps lower than previous");
 			do_cpufreq_mitigation(policy, cluster, THROTTLE_UP);
 		}
@@ -276,15 +283,15 @@ static int govern_cpu(struct cluster_prop *cluster)
 		   undesired scenarios causing cpu-frequency to be throttled inaccurately. But we would want to avoid this
 		   situation as it consumes cpu cycles and is recommended to choose a sensor that is stable.  */
 
-		else if(cluster->cur_temps > (cluster->prev_temps + temp_diff)){
-			temp = (cluster->cur_temps - cluster->prev_temps) / 2;
+		else if(therm_monitor->cur_temps > (therm_monitor->prev_temps + temp_diff)){
+			temp = (therm_monitor->cur_temps - therm_monitor->prev_temps) / 2;
 			PDEBUG("current temps dont match previous DOWN max_dif:%d",temp);
 			for(i = 0; i<=temp ;i++)
 				do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 		}
 		
-		else if(cluster->prev_temps > (cluster->cur_temps + temp_diff)){
-			temp = (cluster->prev_temps - cluster->cur_temps) / 2;
+		else if(therm_monitor->prev_temps > (cluster->therm_monitor + temp_diff)){
+			temp = (therm_monitor->prev_temps - cluster->therm_monitor) / 2;
 			PDEBUG("current temps dont match previous UP max_dif:%d",temp);
 			for(i = 0; i<=temp; i++)
 				do_cpufreq_mitigation(policy, cluster, THROTTLE_UP);
@@ -334,9 +341,9 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 		default:
 			break;
 	}
-	PDEBUG("cur_temps:%ld throt_temps:%d prev_temps:%ld",cluster->cur_temps,cluster->throt_temps,
-					cluster->prev_temps);
-	cluster->prev_temps = cluster->cur_temps;
+	PDEBUG("therm_monitor:%ld throt_temps:%d prev_temps:%ld",therm_monitor->cur_temps,cluster->throt_temps,
+					therm_monitor->prev_temps);
+	therm_monitor->prev_temps = therm_monitor->cur_temps;
 
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
 			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
