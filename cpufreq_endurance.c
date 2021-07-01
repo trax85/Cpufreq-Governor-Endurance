@@ -26,7 +26,6 @@ static bool init_failed = 0;
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
 static unsigned short int min_step = 5;		// Max throttle step limit
 static unsigned short int temp_diff = 2;		// Temperature Diffrence
-static bool kthread_awake = false;
 
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 static struct sensor_monitor *therm_monitor;
@@ -378,9 +377,8 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	unsigned int cpu;
 	unsigned int gov_down = 0;
 	struct cluster_prop *cluster;
-	kthread_awake = true;
 	
-	PDEBUG("CFEndurance Running wake:%d",kthread_awake);
+	PDEBUG("CFEndurance Running");
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
 		if(!governor_enabled){
@@ -426,11 +424,11 @@ int start_gov_setup(struct cpufreq_policy *policy)
 		goto error;
 	
 	/* setup kthread for endurance governing skip is it has already been setup */
-	if(kthread_awake == false){
+	if(governor_enabled == 1){
 		wake_up_process(speedchange_task);
 		PDEBUG("Run kthread");
 	}
-	PDEBUG("Finished setup wake:%d",kthread_awake);
+	PDEBUG("Finished setup");
 	
 	return 0;
 error:
