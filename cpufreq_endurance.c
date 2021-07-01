@@ -135,34 +135,63 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 		
 	return 0;
 }
+
 /*
-*/
-void cfe_reset_params(struct cpufreq_policy *policy, struct cluster_prop *cluster)
+ * cfe_reset_params() resets the cluster max_freq ,nr_levels and prev_temps
+ * this helps us to do correct thermal mitigation and dynamically switch between
+ * frequency and allows users to have a certain degree of control on the max frequency
+ * which has direct impact on how the thermal mitigation proceeds.
+ */
+int cfe_reset_params(struct cpufreq_policy *policy)
 {
+	struct cluster_prop *cluster = per_cpu(cluster_nr, policy->cpu);
 	int i,temp,index = 0;
-	
-	if(!cluster)
-		return;
 		
+	if(!therm_monitor || !cluster)
+		goto skip;
+		
+	//PDEBUG("cfe reset");
+	
+	/* policy limits change gets called multiple times eventhough change
+	 * happened only once so therefore add checks to see if the reset 
+	 * has already been performed. 
+	 */
+	if(cluster->max_freq == policy->max)
+		goto skip;
+		
+	PDEBUG("Prev freq:%u Cur Freq:%u New freq:%u",cluster->max_freq,policy->cur,policy->max);	
+	/* using index navigate to the equavalent frequency as that of
+	 * policy->max in our frequency table.
+	 */
 	while(cluster->freq_table[index].frequency < policy->max)
 		index++;
-	
 	PDEBUG("Reseting Index to:%d",index);
-	
+
 	cluster->cur_level = cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
 	therm_monitor->prev_temps = therm_monitor->cur_temps;
 	
-	if(cluster->therm_monitor >= cluster->throt_temps){
+	/* check if throttle down is required if required then loop until it
+	 * reaches its correct level else just update the frequency and set it
+	 * to new requested frequency. 
+	 */
+	if(therm_monitor->cur_temps >= cluster->throt_temps){
 		temp = therm_monitor->cur_temps - cluster->throt_temps;
 		if(temp)
 			temp = temp / 2;
-		PDEBUG("go down levels by:%d",temp);
+		PDEBUG("go down by %d levels",temp);
 		for(i = 0; i <= temp; i++)
 			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 	}
 	else
 		do_cpufreq_mitigation(policy, cluster, UPDATE);
+
+	return 0;
+
+skip:
+	__cpufreq_driver_target(policy, policy->max,
+						CPUFREQ_RELATION_H);
+	return 0;
 }
 
 /*
@@ -444,9 +473,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 	case CPUFREQ_GOV_START:		
 		init_failed = start_gov_setup(policy);
 	case CPUFREQ_GOV_LIMITS:
-		if(init_failed)
-			__cpufreq_driver_target(policy, policy->max,
-						CPUFREQ_RELATION_H);
+		cfe_reset_params(policy);
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
