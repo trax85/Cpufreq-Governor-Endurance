@@ -71,7 +71,7 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	cfe_reset_params(policy, cluster);
 	
 	// Debugging functions
-	if(debug == 1){
+	if(cfe_debug){
 		for(i = 0; i <= cluster->nr_levels; i++)
 			PDEBUG("%u ",cluster->freq_table[i].frequency);
 		PDEBUG("\n");
