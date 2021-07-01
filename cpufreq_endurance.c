@@ -383,8 +383,10 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	PDEBUG("CFEndurance Running wake:%d",kthread_awake);
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
-		if(!governor_enabled)
-			goto done;
+		if(!governor_enabled){
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule();
+		}
 			
 		for_each_possible_cpu(cpu){
 			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
@@ -401,11 +403,6 @@ static int cpufreq_endurance_speedchange_task(void *data){
 	}
 	
 	return 0;
-done:
-	kthread_awake = false;
-	PDEBUG("Offlining Endurance Governor wake:%d",kthread_awake);
-	return 0;
-	
 }
 
 /*
@@ -428,22 +425,12 @@ int start_gov_setup(struct cpufreq_policy *policy)
 	if(err)
 		goto error;
 	
-	PDEBUG("Finished setup wake:%d",kthread_awake);
-	
 	/* setup kthread for endurance governing skip is it has already been setup */
 	if(kthread_awake == false){
-		speedchange_task =
-			kthread_create(cpufreq_endurance_speedchange_task, NULL,
-				       "cfendurance");
-		if (IS_ERR(speedchange_task))
-			return PTR_ERR(speedchange_task);
-
-		sched_setscheduler_nocheck(speedchange_task, SCHED_FIFO, &param);
-		get_task_struct(speedchange_task);
-		/* NB: wake up so the thread does not look hung to the freezer */
 		wake_up_process(speedchange_task);
 		PDEBUG("Run kthread");
 	}
+	PDEBUG("Finished setup wake:%d",kthread_awake);
 	
 	return 0;
 error:
@@ -498,8 +485,23 @@ struct cpufreq_governor cpufreq_gov_endurance = {
 
 static int __init cpufreq_gov_endurance_init(void)
 {
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO-2 };
+	
 	mutex_init(&gov_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
+	
+	speedchange_task =
+			kthread_create(cfe_thermal_monitor_task, NULL,
+				       "cfendurance");
+	if (IS_ERR(speedchange_task))
+		return PTR_ERR(speedchange_task);
+
+	sched_setscheduler_nocheck(speedchange_task, SCHED_FIFO, &param);
+	get_task_struct(speedchange_task);
+	
+	/* NB: wake up so the thread does not look hung to the freezer */
+	wake_up_process(speedchange_task);
+	
 	return cpufreq_register_governor(&cpufreq_gov_endurance);
 }
 
