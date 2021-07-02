@@ -194,58 +194,22 @@ skip:
 }
 
 /*
- * get_sensor_dat() get temperature reading from the desired sensor.
- * in case of failure to get current temperature from sensor it returns true value.
+ * update_sensor_data() get temperature reading from the desired sensor.
+ * in case of failure to get current temperature from sensor it sets cur_temps to 0.
  */
-static inline int get_sensor_dat(struct cluster_prop *cluster)
+static inline int update_sensor_data(void)
 {
 	int ret = 0;
 	
 	ret = sensor_get_temp(SENSOR_ID,&therm_monitor->cur_temps);
 	if(ret)
 		goto fail;
-	if((therm_monitor->cur_temps > 100) || (therm_monitor->cur_temps < 0))
-		goto fail;
 
 	return 0;
 fail:
 	pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
-	therm_monitor->cur_temps = (long)NULL; // give null to disable temperature based cpu governing
+	therm_monitor->cur_temps = 0; // give zero to disable temperature based cpu governing
 	return 1;	
-}
-
-/*	
- * set_temps() records current temperature for the current cluster
- * sets the throttle temperature for available clusters and returns true value in case of
- * failure to get the sensor temperature.
- */
-int set_temps(struct cluster_prop *cluster, unsigned int cpu)
-{
-	int ret = 0;
-
-	if(cluster == NULL){
-		pr_err(KERN_WARNING"%s: core: %d table hasn't been initialised or has failed.\n", __func__, cpu);
-		goto failed_unalloc;
-	}
-	else{
-		ret = get_sensor_dat(cluster);
-		if(ret)
-			goto failed_sens;
-
-		therm_monitor->prev_temps = therm_monitor->cur_temps;
-		
-		/* Initialise throttle temperature of big and little cluster */
-		if(cpu <= NR_LITTLE)
-			cluster->throt_temps = THROTTLE_TEMP_LITTLE;
-		else if(cpu >= NR_BIG)
-			cluster->throt_temps = THROTTLE_TEMP_BIG;
-	}
-	return 0;
-
-failed_sens:
-	pr_err(KERN_WARNING"%s: Failed to get sensor readings aborting operation.\n", __func__);
-failed_unalloc:
-	return 1;
 }
 
 /*	
