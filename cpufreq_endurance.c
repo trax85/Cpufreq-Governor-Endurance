@@ -22,10 +22,11 @@
 #include <linux/kthread.h>
 #include "cpufreq_endurance.h"
 
-static bool init_failed = 0;
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
 static unsigned short int min_step = 5;		// Max throttle step limit
 static unsigned short int temp_diff = 2;		// Temperature Diffrence
+unsigned int governor_enabled = 0;
+static bool setup_complete = 0;
 
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 static struct sensor_monitor *therm_monitor;
@@ -37,14 +38,14 @@ static struct mutex speedchange_lock;
 
 /*		
  * get_cpufreq_table() initialises little and big core frequency tables.
- * @buf: a temporary buffer used to get frequncy table 
+ * does all reset/init process and any failure during this process leads
+ * to governor disabling and not working for the failed cluster. 
  */
 int get_cpufreq_table(struct cpufreq_policy *policy){
 	
 	struct cluster_prop *cluster;
 	int ret = 0,i;
 	
-	mutex_lock(&gov_lock);
 	/* If structure already initialized exit out */
 	cluster = per_cpu(cluster_nr,policy->cpu);
 	if(cluster)
@@ -60,16 +61,21 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	cluster = per_cpu(cluster_nr, policy->cpu);
 	if(!cluster)
 		goto failed_inittbl;
+	if(!therm_monitor)
+		goto failed_inittbl;
 	
-	/* Cluster temprature initialization */
-	ret = set_temps(cluster, policy->cpu);
+	/* Initialise throttle temperature of big and little cluster */
+	if(policy->cpu <= NR_LITTLE)
+		cluster->throt_temps = THROTTLE_TEMP_LITTLE;
+	else if(policy->cpu >= NR_BIG)
+		cluster->throt_temps = THROTTLE_TEMP_BIG;
+		
+	/* temprature initialization */
+	ret = update_sensor_data();
 	if(ret)
 		goto failed_gettbl;
 	
-	/* Cluster set initial frequency mitigation settings and parameters 
-	 * before handing over to speedchange_task() thread for rest of cpu governing tasks.
-	 */
-	cfe_reset_params(policy, cluster);
+	setup_complete = 1;
 	
 	// Debugging functions
 	if(cfe_debug){
@@ -77,19 +83,22 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 			PDEBUG("%u ",cluster->freq_table[i].frequency);
 		PDEBUG("\n");
 	}
-
+	
 setup_done:
-	/* reassign as the address changes after resume/suspend */
-	cluster->ppol = policy;
+	/* reassign even if already inited as the address changes after resume/suspend */
+	cluster->ppol = policy;	
+	/* Cluster set initial frequency mitigation settings and parameters 
+	 * before handing over to speedchange_task() thread for rest of cpu governing tasks.
+	 */
+	cfe_reset_params(policy);
+	
 	governor_enabled++;
-	PDEBUG("governor state:%d",cluster->governor_enabled);
-	mutex_unlock(&gov_lock);
+	PDEBUG("governor state:%d",governor_enabled);
 	return 0;
 
 failed_inittbl:
 	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
-	mutex_unlock(&gov_lock);
 	return 1;
 }
 
@@ -421,8 +430,10 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 {
 	struct cluster_prop *cluster;
 	switch (event) {
-	case CPUFREQ_GOV_START:		
-		init_failed = start_gov_setup(policy);
+	case CPUFREQ_GOV_START:
+		mutex_lock(&gov_lock);		
+		start_gov_setup(policy);
+		mutex_unlock(&gov_lock);
 	case CPUFREQ_GOV_LIMITS:
 		mutex_lock(&speedchange_lock);
 		cfe_reset_params(policy);
