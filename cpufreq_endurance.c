@@ -33,6 +33,8 @@ static struct sensor_monitor *therm_monitor;
 static struct task_struct *speedchange_task;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
+static struct mutex speedchange_lock;
+
 /*		
  * get_cpufreq_table() initialises little and big core frequency tables.
  * @buf: a temporary buffer used to get frequncy table 
@@ -422,7 +424,9 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 	case CPUFREQ_GOV_START:		
 		init_failed = start_gov_setup(policy);
 	case CPUFREQ_GOV_LIMITS:
+		mutex_lock(&speedchange_lock);
 		cfe_reset_params(policy);
+		mutex_unlock(&speedchange_lock);
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
@@ -450,6 +454,7 @@ static int __init cpufreq_gov_endurance_init(void)
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-2 };
 	
 	mutex_init(&gov_lock);
+	mutex_init(&speedchange_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
 	
 	speedchange_task =
