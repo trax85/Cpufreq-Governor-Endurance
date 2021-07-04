@@ -31,6 +31,7 @@ struct cluster_prop {
 struct sensor_monitor {
 	long int cur_temps;			// Present sensor temperature in Celsius
 	long int prev_temps;			// Previous sensor temperature in Celsius
+	long int updated_temps;		// current updated sesnor data 
 };
 
 typedef enum {

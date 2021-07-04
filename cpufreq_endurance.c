@@ -181,6 +181,7 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 	cluster->cur_level = cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
 	therm_monitor->prev_temps = therm_monitor->cur_temps;
+	therm_monitor->updated_temps = 0;
 	
 	/* check if throttle down is required if required then loop until it
 	 * reaches its correct level else just update the frequency and set it
@@ -391,8 +392,10 @@ static int cfe_thermal_monitor_task(void *data){
 		/* get updated thermal reading */
 		update_sensor_data();
 			
-		if(therm_monitor->cur_temps != therm_monitor->prev_temps)
+		if(therm_monitor->cur_temps != therm_monitor->updated_temps)
 			atomic_notifier_call_chain(&therm_alert_notifier_head, 0,0);
+			
+		therm_monitor->updated_temps = therm_monitor->cur_temps;
 
 		/* both clusters have disabled endurance governor */
 		set_current_state(TASK_INTERRUPTIBLE);
