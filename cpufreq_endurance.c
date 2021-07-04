@@ -28,6 +28,7 @@ static unsigned short int temp_diff = 2;		// Temperature Diffrence
 unsigned int governor_enabled = 0;
 static bool setup_complete = 0;
 
+ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 static struct sensor_monitor *therm_monitor;
 /* realtime thread handles frequency scaling */
@@ -296,6 +297,32 @@ end:
 	return 0;
 }
 
+static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
+				void *data)
+{
+	unsigned int cpu = 0;
+	unsigned int per_cpu_governor = governor_enabled;
+	int ret = 0;
+	
+	/* loop through one core in each cluster */
+	for_each_possible_cpu(cpu){
+		if(per_cpu_governor){
+			if((cpu == NR_BIG) || (cpu == NR_LITTLE)){
+				struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
+				if(cluster)
+					govern_cpu(cluster);
+				per_cpu_governor--;
+			}
+		}
+	}
+	
+	return 0;
+}
+
+static struct notifier_block therm_notifier_block = {
+	.notifier_call = thermal_change_callback,
+};
+
 /*
  * do_cpufreq_mitigation() depending on event signals from govern_cpu() it decides the throttling direction &
  * records the current temperature of the sensor. it modifies the policy max frequency to the latest max as
@@ -347,7 +374,7 @@ update:
  * if this function fails te governor is essentially dead, locks have been put to mitigate
  * contention issues that may arise during execution.
  */
-static int cpufreq_endurance_speedchange_task(void *data){
+static int cfe_thermal_monitor_task(void *data){
 
 	unsigned int cpu;
 	unsigned int gov_down = 0;
@@ -360,15 +387,12 @@ static int cpufreq_endurance_speedchange_task(void *data){
 			set_current_state(TASK_INTERRUPTIBLE);
 			schedule();
 		}
+		
+		/* get updated thermal reading */
+		update_sensor_data();
 			
-		for_each_possible_cpu(cpu){
-			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
-				cluster = per_cpu(cluster_nr, cpu);
-				if(cluster){
-					govern_cpu(cluster);
-				}
-			}
-		}
+		if(therm_monitor->cur_temps != therm_monitor->prev_temps)
+			atomic_notifier_call_chain(&therm_alert_notifier_head, 0,0);
 
 		/* both clusters have disabled endurance governor */
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -400,6 +424,8 @@ int start_gov_setup(struct cpufreq_policy *policy)
 	
 	/* setup kthread for endurance governing skip is it has already been setup */
 	if(governor_enabled == 1){
+		atomic_notifier_chain_register(&therm_alert_notifier_head,
+								&therm_notifier_block);
 		wake_up_process(speedchange_task);
 		PDEBUG("Run kthread");
 	}
@@ -443,6 +469,10 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		mutex_lock(&gov_lock);
 		cluster = per_cpu(cluster_nr,policy->cpu);
 		governor_enabled--;
+		if(!governor_enabled)
+			atomic_notifier_chain_unregister(
+						&therm_alert_notifier_head,
+						&therm_notifier_block);
 		mutex_unlock(&gov_lock);
 		break;
 	default:
