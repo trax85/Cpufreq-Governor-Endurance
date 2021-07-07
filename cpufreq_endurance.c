@@ -201,8 +201,8 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 	return 0;
 
 skip:
-	__cpufreq_driver_target(policy, policy->max,
-						CPUFREQ_RELATION_H);
+	do_cpufreq_mitigation(policy, cluster, UPDATE);
+	
 	return 0;
 }
 
@@ -215,14 +215,13 @@ static inline int update_sensor_data(void)
 	int ret = 0;
 	
 	ret = sensor_get_temp(SENSOR_ID,&therm_monitor->cur_temps);
-	if(ret)
-		goto fail;
-
-	return 0;
-fail:
-	pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
-	therm_monitor->cur_temps = 0; // give zero to disable temperature based cpu governing
-	return 1;	
+	if(ret){
+		pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
+		therm_monitor->cur_temps = 0; // give zero to disable temperature based cpu governing
+		return 1;
+	}
+	
+	return 0;	
 }
 
 /*	
@@ -335,11 +334,12 @@ static struct notifier_block therm_notifier_block = {
 };
 
 /*
- * do_cpufreq_mitigation() depending on event signals from govern_cpu() it decides the throttling direction &
- * records the current temperature of the sensor. it modifies the policy max frequency to the latest max as
- * per the event signal recived by the function.
+ * do_cpufreq_mitigation() depending on event signals from govern_cpu() it decides
+ * the throttling direction & records the current temperature of the sensor.
+ * it modifies the policy max frequency to the latest max as per the event signal
+ * paseed by the calling function.
  */
-int do_cpufreq_mitigation(struct cpufreq_policy *policy, 
+static int do_cpufreq_mitigation(struct cpufreq_policy *policy, 
 					struct cluster_prop *cluster, state_info event){
 	
 	switch(event){
@@ -348,9 +348,10 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 			PDEBUG("RESET");
 			break;
 		case THROTTLE_DOWN:
-			if((cluster->cur_level > (cluster->cur_level - min_step)) && (cluster->cur_level != 0)){
-			cluster->cur_level--;
-			PDEBUG("THROTTLE_DOWN");
+			if((cluster->cur_level > (cluster->cur_level - min_step))
+							&& (cluster->cur_level != 0)){
+				cluster->cur_level--;
+				PDEBUG("THROTTLE_DOWN");
 			}else
 				printk("MAX_THROTTLE");
 			break;
@@ -362,22 +363,20 @@ int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 		case UPDATE:
 			PDEBUG("UPDATE");
 			goto update;
-		default:
-			break;
+		default: return 0;
 	}
-	PDEBUG("therm_monitor:%ld throt_temps:%d prev_temps:%ld",therm_monitor->cur_temps,cluster->throt_temps,
-					therm_monitor->prev_temps);
-	therm_monitor->prev_temps = therm_monitor->cur_temps;
-
+	
+	PDEBUG("cur_temps:%ld throt_temps:%d prev_temps:%ld",therm_monitor->cur_temps,
+						cluster->throt_temps,therm_monitor->prev_temps);
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
 			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
 
 update:
-	policy->cur = cluster->freq_table[cluster->cur_level].frequency;
-	cluster->prev_freq = policy->cur;
-	__cpufreq_driver_target(policy, policy->cur,
+	policy->max = cluster->freq_table[cluster->cur_level].frequency;
+	cluster->prev_freq = policy->max;
+	__cpufreq_driver_target(policy, policy->max,
 						CPUFREQ_RELATION_H);
-	return 0;
+	return 1;
 }
 
 /*
