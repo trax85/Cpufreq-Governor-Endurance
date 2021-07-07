@@ -456,15 +456,17 @@ error:
 /* 
  *cfe_cleanup() dealloctates all structures before exiting for each cluster
  */
-static void cfe_cleanup(void){
-	unsigned int cpu;
+static void cfe_cleanup(void)
+{
 	struct cluster_prop *cluster = NULL;
+	unsigned int cpu;
 	
 	for_each_possible_cpu(cpu){
 		cluster = per_cpu(cluster_nr,cpu);
 		if(cluster)
 			kfree(cluster);
 	}
+	kfree(therm_monitor);
 }
 
 static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
