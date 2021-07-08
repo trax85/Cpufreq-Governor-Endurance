@@ -25,12 +25,15 @@
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
 static unsigned short int min_step = 5;		// Max throttle step limit
 static unsigned short int temp_diff = 2;		// Temperature Diffrence
+/* governor status check variables */
+static bool kthread_sleep = 0;
 unsigned int governor_enabled = 0;
 static bool setup_complete = 0;
 
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 static struct sensor_monitor *therm_monitor;
+
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
 static spinlock_t speedchange_cpumask_lock;
@@ -138,6 +141,7 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 
 		memset(therm_monitor, 0, sizeof(struct sensor_monitor));
 	}
+	
 	/* assign cluster -> cluster_nr for each avilable core in that cluster */
 	for_each_cpu(i, policy->related_cpus)
 		per_cpu(cluster_nr,i) = cluster;
