@@ -406,15 +406,16 @@ static int cfe_thermal_monitor_task(void *data){
 			goto sleep;
 			
 		/* get updated thermal reading */
-		update_sensor_data();
+		ret = update_sensor_data();
+		if(ret)
+			goto sleep;
 			
 		if(therm_monitor->cur_temps != therm_monitor->updated_temps)
 			atomic_notifier_call_chain(&therm_alert_notifier_head, 0,0);
 			
 		therm_monitor->updated_temps = therm_monitor->cur_temps;
-
+		therm_monitor->updated_temps = therm_monitor->cur_temps;	
 sleep:
-		/* both clusters have disabled endurance governor */
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(nap_time_ms));
 	}
