@@ -429,33 +429,32 @@ sleep:
  * failure here the governor may behave unpredictably so redundancies have 
  * been added to prevent that.
  */
-int start_gov_setup(struct cpufreq_policy *policy)
+void start_gov_setup(struct cpufreq_policy *policy)
 {
-	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 	int err = 0;
 	
 	PDEBUG("Starting Governor for cpu:%d",policy->cpu);
 	
 	/* aquire lock so that we dont overwrite critical sections which could lead to wrong 
-		   data being taken in and improper working of governor */
-	
+	 * data being taken in and improper working of governor
+	 */
 	err = get_cpufreq_table(policy);
 	if(err)
 		goto error;
-	
+
 	/* setup kthread for endurance governing skip is it has already been setup */
-	if(governor_enabled == 1){
+	if(governor_enabled == 1)
+	{
 		atomic_notifier_chain_register(&therm_alert_notifier_head,
 								&therm_notifier_block);
 		wake_up_process(speedchange_task);
 		PDEBUG("Run kthread");
 	}
 	PDEBUG("Finished setup");
+	return;
 	
-	return 0;
 error:
 	pr_err(KERN_INFO"%s: Failed to setup governor.\n", __func__);
-	return 1;
 }
 
 /* 
