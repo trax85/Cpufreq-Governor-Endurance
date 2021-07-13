@@ -482,6 +482,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		mutex_lock(&gov_lock);		
 		start_gov_setup(policy);
 		mutex_unlock(&gov_lock);
+		break;
 	case CPUFREQ_GOV_LIMITS:
 		mutex_lock(&speedchange_lock);
 		cfe_reset_params(policy);
