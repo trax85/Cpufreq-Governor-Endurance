@@ -98,12 +98,12 @@ setup_done:
 	
 	governor_enabled++;
 	PDEBUG("governor state:%d",governor_enabled);
-	return 0;
+	return ret;
 
 failed_inittbl:
 	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
-	return 1;
+	return ret;
 }
 
 /*
