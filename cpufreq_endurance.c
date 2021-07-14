@@ -163,7 +163,7 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 	int i,temp,index = 0;
 		
 	if(!therm_monitor || !cluster)
-		goto skip;
+		return 0;
 		
 	//PDEBUG("cfe reset");
 	
