@@ -32,7 +32,7 @@ static bool setup_complete = 0;
 
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
-static struct sensor_monitor *therm_monitor;
+static struct sensor_monitor *thermal_monitor;
 
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
@@ -65,7 +65,7 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	cluster = per_cpu(cluster_nr, policy->cpu);
 	if(!cluster)
 		goto failed_inittbl;
-	if(!therm_monitor)
+	if(!thermal_monitor)
 		goto failed_inittbl;
 	
 	/* Initialise throttle temperature of big and little cluster */
@@ -133,13 +133,13 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 
 		memset(cluster, 0, sizeof(struct cluster_prop));
 	}
-	if(!therm_monitor){
-		therm_monitor = kzalloc(sizeof(struct sensor_monitor), 
+	if(!thermal_monitor){
+		thermal_monitor = kzalloc(sizeof(struct sensor_monitor), 
 						GFP_KERNEL);
-		if(!therm_monitor)
+		if(!thermal_monitor)
 			return -ENOMEM;
 
-		memset(therm_monitor, 0, sizeof(struct sensor_monitor));
+		memset(thermal_monitor, 0, sizeof(struct sensor_monitor));
 	}
 	
 	/* assign cluster -> cluster_nr for each avilable core in that cluster */
@@ -162,7 +162,7 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 	struct cluster_prop *cluster = per_cpu(cluster_nr, policy->cpu);
 	int i,temp,index = 0;
 		
-	if(!therm_monitor || !cluster)
+	if(!thermal_monitor || !cluster)
 		return 0;
 		
 	//PDEBUG("cfe reset");
@@ -184,15 +184,15 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 
 	cluster->cur_level = cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
-	therm_monitor->prev_temps = therm_monitor->cur_temps;
-	therm_monitor->updated_temps = 0;
+	thermal_monitor->prev_temps = thermal_monitor->cur_temps;
+	thermal_monitor->updated_temps = 0;
 	
 	/* check if throttle down is required if required then loop until it
 	 * reaches its correct level else just update the frequency and set it
 	 * to new requested frequency. 
 	 */
-	if(therm_monitor->cur_temps >= cluster->throt_temps){
-		temp = therm_monitor->cur_temps - cluster->throt_temps;
+	if(thermal_monitor->cur_temps >= cluster->throt_temps){
+		temp = thermal_monitor->cur_temps - cluster->throt_temps;
 		if(temp)
 			temp = temp / 2;
 		PDEBUG("go down by %d levels",temp);
@@ -218,10 +218,10 @@ static inline int update_sensor_data(void)
 {
 	int ret = 0;
 	
-	ret = sensor_get_temp(SENSOR_ID,&therm_monitor->cur_temps);
 	if(ret){
+	ret = sensor_get_temp(SENSOR_ID,&thermal_monitor->cur_temps);
 		pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
-		therm_monitor->cur_temps = 0; // give zero to disable temperature based cpu governing
+		thermal_monitor->cur_temps = 0; // give zero to disable temperature based cpu governing
 		return 1;
 	}
 	
@@ -243,8 +243,8 @@ static int govern_cpu(struct cluster_prop *cluster)
 	int level_diff = 0;
 	int ret = 0;
 
-	cl_temp_diff = therm_monitor->cur_temps - therm_monitor->prev_temps;
-	th_temp_diff = therm_monitor->cur_temps - cluster->throt_temps;
+	cl_temp_diff = thermal_monitor->cur_temps - thermal_monitor->prev_temps;
+	th_temp_diff = thermal_monitor->cur_temps - cluster->throt_temps;
 	PDEBUG("cluster diff:%d throt diff:%d cpuid:%d",cl_temp_diff,th_temp_diff,policy->cpu);
 		
 	/* either we have not yet reached our cluster throttle temps or we dropped below
@@ -252,7 +252,7 @@ static int govern_cpu(struct cluster_prop *cluster)
 	 */
 	if(th_temp_diff < 0){
 		PDEBUG("Currrent temps lower than throttle temps");
-		if(therm_monitor->prev_temps < cluster->throt_temps)
+		if(thermal_monitor->prev_temps < cluster->throt_temps)
 			goto end;
 		else
 			ret = do_cpufreq_mitigation(policy, cluster, RESET);
@@ -328,7 +328,7 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 	}
 	/* record current temperature */
 	if(ret)
-		therm_monitor->prev_temps = therm_monitor->cur_temps;
+		thermal_monitor->prev_temps = thermal_monitor->cur_temps;
 	kthread_sleep = 0;
 	return 0;
 }
@@ -370,8 +370,8 @@ static int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 		default: return 0;
 	}
 	
-	PDEBUG("cur_temps:%ld throt_temps:%d prev_temps:%ld",therm_monitor->cur_temps,
-						cluster->throt_temps,therm_monitor->prev_temps);
+	PDEBUG("cur_temps:%ld throt_temps:%d prev_temps:%ld",thermal_monitor->cur_temps,
+						cluster->throt_temps,thermal_monitor->prev_temps);
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
 			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
 
@@ -388,15 +388,14 @@ update:
  * if this function fails te governor is essentially dead, locks have been put to mitigate
  * contention issues that may arise during execution.
  */
-static int cfe_thermal_monitor_task(void *data){
-
-	unsigned int cpu;
-	unsigned int gov_down = 0;
-	struct cluster_prop *cluster;
+static int cfe_thermal_monitor_task(void *data)
+{
+	int ret = 0;
 	
-	PDEBUG("CFEndurance Running");
+	PDEBUG("CFEndurance Running...");
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_RUNNING);
+		/* sleep thread until notifier completes its task or if govenor disabled */
 		if(!governor_enabled){
 			set_current_state(TASK_INTERRUPTIBLE);
 			schedule();
@@ -404,17 +403,17 @@ static int cfe_thermal_monitor_task(void *data){
 		
 		if(kthread_sleep)
 			goto sleep;
-			
+		
 		/* get updated thermal reading */
 		ret = update_sensor_data();
 		if(ret)
 			goto sleep;
 			
-		if(therm_monitor->cur_temps != therm_monitor->updated_temps)
+		/* compare with updated temps to see if the current temps changed or not */	
+		if(thermal_monitor->cur_temps != thermal_monitor->updated_temps)
 			atomic_notifier_call_chain(&therm_alert_notifier_head, 0,0);
 			
-		therm_monitor->updated_temps = therm_monitor->cur_temps;
-		therm_monitor->updated_temps = therm_monitor->cur_temps;	
+		thermal_monitor->updated_temps = thermal_monitor->cur_temps;	
 sleep:
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(nap_time_ms));
@@ -470,7 +469,7 @@ static void cfe_cleanup(void)
 		if(cluster)
 			kfree(cluster);
 	}
-	kfree(therm_monitor);
+	kfree(thermal_monitor);
 }
 
 static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
