@@ -28,7 +28,6 @@ static unsigned short int temp_diff = 2;		// Temperature Diffrence
 /* governor status check variables */
 static bool kthread_sleep = 0;
 unsigned int governor_enabled = 0;
-static bool setup_complete = 0;
 
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
@@ -78,8 +77,6 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	ret = update_sensor_data();
 	if(ret)
 		goto failed_gettbl;
-	
-	setup_complete = 1;
 	
 	// Debugging functions
 	if(cfe_debug){
