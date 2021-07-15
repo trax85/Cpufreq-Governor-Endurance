@@ -24,7 +24,6 @@
 
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
 static unsigned short int min_step = 5;		// Max throttle step limit
-static unsigned short int temp_diff = 2;		// Temperature Diffrence
 /* governor status check variables */
 static bool kthread_sleep = 0;
 unsigned int governor_enabled = 0;
@@ -66,12 +65,6 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 		goto failed_inittbl;
 	if(!thermal_monitor)
 		goto failed_inittbl;
-	
-	/* Initialise throttle temperature of big and little cluster */
-	if(policy->cpu <= NR_LITTLE)
-		cluster->throt_temps = THROTTLE_TEMP_LITTLE;
-	else if(policy->cpu >= NR_BIG)
-		cluster->throt_temps = THROTTLE_TEMP_BIG;
 		
 	/* temprature initialization */
 	ret = update_sensor_data();
@@ -86,6 +79,11 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	}
 	
 setup_done:
+	/* initilse the cluster tunables */
+	ret = init_tunables(policy);
+	if(ret)
+		goto failed_inittbl;
+		
 	/* reassign even if already inited as the address changes after resume/suspend */
 	cluster->ppol = policy;	
 	/* Cluster set initial frequency mitigation settings and parameters 
@@ -144,7 +142,37 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 		per_cpu(cluster_nr,i) = cluster;
 		
 	cluster->freq_table = freq_table;
-		
+
+	return 0;
+}
+
+/*
+ * init_tunables() initlisies the governor tunables to their initial
+ * default values. sets up throttle temprature and temprature diffrence to be
+ * kept for each cluster. The function is re-called everytime governor is
+ * restarted as the tunable structure is re-inited with default values.
+ */
+int init_tunables(struct cpufreq_policy *policy)
+{
+	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu);
+	struct cluster_tunables *tunable = cluster->tunables;
+	int err = 0;
+	if(!tunable){
+		tunable = kzalloc(sizeof(struct cluster_tunables), 
+						GFP_KERNEL);
+		if(!tunable)
+			return -ENOMEM;
+
+		memset(tunable, 0, sizeof(struct cluster_tunables));
+	/* Initialise throttle temperature of big and little cluster */
+	if(policy->cpu <= NR_LITTLE){
+		tunable->throt_temps = THROTTLE_TEMP_LITTLE;
+		tunable->temp_diff = TEMP_DIFF_LITTLE;
+	}
+	else if(policy->cpu >= NR_BIG){
+		tunable->throt_temps = THROTTLE_TEMP_BIG;
+		tunable->temp_diff = TEMP_DIFF_BIG;
+	}
 	return 0;
 }
 
@@ -157,9 +185,10 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 int cfe_reset_params(struct cpufreq_policy *policy)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr, policy->cpu);
+	struct cluster_tunables *tunable = cluster->tunables;
 	int i,temp,index = 0;
 		
-	if(!thermal_monitor || !cluster)
+	if(!thermal_monitor || !cluster || !tunable)
 		return 0;
 		
 	//PDEBUG("cfe reset");
@@ -188,8 +217,8 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 	 * reaches its correct level else just update the frequency and set it
 	 * to new requested frequency. 
 	 */
-	if(thermal_monitor->cur_temps >= cluster->throt_temps){
-		temp = thermal_monitor->cur_temps - cluster->throt_temps;
+	if(thermal_monitor->cur_temps >= tunable->throt_temps){
+		temp = thermal_monitor->cur_temps - tunable->throt_temps;
 		if(temp)
 			temp = temp / 2;
 		PDEBUG("go down by %d levels",temp);
@@ -234,14 +263,15 @@ static inline int update_sensor_data(void)
 static int govern_cpu(struct cluster_prop *cluster)
 {
 	struct cpufreq_policy *policy = cluster->ppol;
-	int cl_temp_diff = 0;
-	int th_temp_diff = 0;
-	int temp = 0;
-	int level_diff = 0;
-	int ret = 0;
+	struct cluster_tunables *tunable = policy->governor_data;
+	int cl_temp_diff = 0, th_temp_diff = 0, level_diff = 0;
+	int temp = 0, ret = 0;
 
+	if(cluster->gov_enabled)
+		return 0;
+		
 	cl_temp_diff = thermal_monitor->cur_temps - thermal_monitor->prev_temps;
-	th_temp_diff = thermal_monitor->cur_temps - cluster->throt_temps;
+	th_temp_diff = thermal_monitor->cur_temps - tunable->throt_temps;
 	PDEBUG("cluster diff:%d throt diff:%d cpuid:%d",cl_temp_diff,th_temp_diff,policy->cpu);
 		
 	/* either we have not yet reached our cluster throttle temps or we dropped below
@@ -249,7 +279,7 @@ static int govern_cpu(struct cluster_prop *cluster)
 	 */
 	if(th_temp_diff < 0){
 		PDEBUG("Currrent temps lower than throttle temps");
-		if(thermal_monitor->prev_temps < cluster->throt_temps)
+		if(thermal_monitor->prev_temps < tunable->throt_temps)
 			goto end;
 		else
 			ret = do_cpufreq_mitigation(policy, cluster, RESET);
@@ -272,7 +302,7 @@ static int govern_cpu(struct cluster_prop *cluster)
 		/* temps have started to drop either due to low avg load or idleing of the cluster,
 	   	 * so start throttling the core up by one level as the temps drop. 
 	   	 */
-		else if(temp >= temp_diff){
+		else if(temp >= tunable->temp_diff){
 			PDEBUG("current temps lower than previous");
 			ret = do_cpufreq_mitigation(policy, cluster, THROTTLE_UP);
 		}
@@ -287,7 +317,7 @@ static int govern_cpu(struct cluster_prop *cluster)
 	   	 * is being mitigated down  through multiple levels depending on how much the
 	   	 * temps have gone up since last recorded. 
 	   	 */
-		else if(cl_temp_diff >= temp_diff){
+		else if(cl_temp_diff >= tunable->temp_diff){
 			PDEBUG("current temps higher than previous");
 			ret = do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 		}		
