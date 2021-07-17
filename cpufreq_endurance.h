@@ -24,6 +24,7 @@ struct cluster_prop {
 	unsigned short int nr_levels;		// Stores number of total levels
 	unsigned short int cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
+	bool gov_enabled;
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster

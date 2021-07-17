@@ -92,6 +92,7 @@ setup_done:
 	cfe_reset_params(policy);
 	
 	governor_enabled++;
+	cluster->gov_enabled = 1;
 	PDEBUG("governor state:%d",governor_enabled);
 	return ret;
 
@@ -334,7 +335,6 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 				void *data)
 {
 	unsigned int cpu = 0;
-	unsigned int per_cpu_governor = governor_enabled;
 	int ret = 0;
 	
 	/* sleep cfe thread during this process as we dont want the cur_temps updating 
@@ -344,13 +344,10 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 	kthread_sleep = 1;
 	/* loop through one core in each cluster */
 	for_each_possible_cpu(cpu){
-		if(per_cpu_governor){
-			if((cpu == NR_BIG) || (cpu == NR_LITTLE)){
-				struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
-				if(cluster)
-					ret += govern_cpu(cluster);
-				per_cpu_governor--;
-			}
+		if((cpu == NR_BIG) || (cpu == NR_LITTLE)){
+			struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
+			if(cluster)
+				ret += govern_cpu(cluster);
 		}
 	}
 	/* record current temperature */
@@ -516,8 +513,9 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
-		cluster = per_cpu(cluster_nr,policy->cpu);
 		governor_enabled--;
+		cluster = per_cpu(cluster_nr, policy->cpu);
+		cluster->gov_enabled = 0;
 		if(!governor_enabled)
 			atomic_notifier_chain_unregister(
 						&therm_alert_notifier_head,
