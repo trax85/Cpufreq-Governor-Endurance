@@ -31,6 +31,7 @@ unsigned int governor_enabled = 0;
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
 static struct sensor_monitor *thermal_monitor;
+static struct attribute_group *get_sysfs_attr(void);
 
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
@@ -165,6 +166,15 @@ int init_tunables(struct cpufreq_policy *policy)
 			return -ENOMEM;
 
 		memset(tunable, 0, sizeof(struct cluster_tunables));
+
+		err = sysfs_create_group(get_governor_parent_kobj(policy),
+				get_sysfs_attr());
+		if(err){
+			kfree(tunable);
+			return err;
+		}
+	}
+
 	/* Initialise throttle temperature of big and little cluster */
 	if(policy->cpu <= NR_LITTLE){
 		tunable->throt_temps = THROTTLE_TEMP_LITTLE;
@@ -174,6 +184,8 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->throt_temps = THROTTLE_TEMP_BIG;
 		tunable->temp_diff = TEMP_DIFF_BIG;
 	}
+	cluster->tunables = tunable;
+	PDEBUG("%s:done",__func__);
 	return 0;
 }
 
@@ -445,6 +457,107 @@ sleep:
 	
 	return 0;
 }
+
+/************************** sysfs interface ************************/
+
+static ssize_t show_throt_temps(struct cluster_tunables *tunable, char *buf)
+{
+	if(!tunable)
+		return 0;
+
+	return sprintf(buf, "%u\n", tunable->throt_temps);		   
+}
+
+static ssize_t store_throt_temps(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	struct cluster_tunables *tunable = policy->governor_data;
+	unsigned int throt_temps;
+	
+ 	if (kstrtouint(buf, 10, &throt_temps))
+ 		return -EINVAL;
+
+ 	tunable->throt_temps = throt_temps;
+ 	cfe_reset_params(policy);
+ 	
+ 	return count;
+}
+
+static ssize_t show_temp_diff(struct cluster_tunables *tunable, char *buf)
+{
+	if(!tunable)
+		return 0;
+
+	return sprintf(buf, "%u\n", tunable->temp_diff);	 				   
+}
+
+static ssize_t store_temp_diff(struct cpufreq_policy *policy, 
+					const char *buf, size_t count)
+{
+	struct cluster_tunables *tunable = policy->governor_data;
+	unsigned int temp_diff;
+	
+ 	if (kstrtouint(buf, 10, &temp_diff))
+ 		return -EINVAL;
+
+ 	tunable->temp_diff = temp_diff;
+ 	cfe_reset_params(policy);
+ 	
+ 	return count;
+}
+
+/*
+ * Create show/store routines (pulled from interactive governor)
+ * pol: One governor instance per struct cpufreq_policy
+ */
+#define show_gov_pol_sys(file_name)					\
+static ssize_t show_##file_name##_gov_pol				\
+(struct cpufreq_policy *policy, char *buf)				\
+{									\
+	return show_##file_name(policy->governor_data, buf);		\
+}
+
+#define store_gov_pol_sys(file_name)					\
+static ssize_t store_##file_name##_gov_pol				\
+(struct cpufreq_policy *policy, const char *buf, size_t count)	\
+{									\
+	return store_##file_name(policy, buf, count);	\
+}
+
+#define show_store_gov_pol_sys(file_name)				\
+show_gov_pol_sys(file_name);						\
+store_gov_pol_sys(file_name)
+
+show_store_gov_pol_sys(throt_temps);
+show_store_gov_pol_sys(temp_diff);
+
+#define gov_pol_attr_rw(_name)					\
+static struct freq_attr _name##_gov_pol =				\
+__ATTR(_name, 0664, show_##_name##_gov_pol, store_##_name##_gov_pol)
+
+#define gov_sys_pol_attr_rw(_name)					\
+	gov_pol_attr_rw(_name)
+	
+gov_sys_pol_attr_rw(throt_temps);
+gov_sys_pol_attr_rw(temp_diff);
+
+static struct attribute *edgov_attributes[] = {
+	&throt_temps_gov_pol.attr,
+	&temp_diff_gov_pol.attr,
+	NULL
+};
+
+static struct attribute_group edgov_tunables = {
+	.attrs = edgov_attributes,
+	.name = "endurance",
+};
+
+static struct attribute_group *get_sysfs_attr(void)
+{
+	return &edgov_tunables;
+}
+
+/************************** sysfs end ****************************/
 
 /*
  * start_gov_setup() setups the governor.
