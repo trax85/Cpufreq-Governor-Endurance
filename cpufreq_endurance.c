@@ -159,6 +159,8 @@ int init_tunables(struct cpufreq_policy *policy)
 	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu);
 	struct cluster_tunables *tunable = cluster->tunables;
 	int err = 0;
+	
+	PDEBUG("%s:start",__func__);
 	if(!tunable){
 		tunable = kzalloc(sizeof(struct cluster_tunables), 
 						GFP_KERNEL);
@@ -184,6 +186,7 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->throt_temps = THROTTLE_TEMP_BIG;
 		tunable->temp_diff = TEMP_DIFF_BIG;
 	}
+	policy->governor_data = tunable;
 	cluster->tunables = tunable;
 	PDEBUG("%s:done",__func__);
 	return 0;
@@ -198,7 +201,7 @@ int init_tunables(struct cpufreq_policy *policy)
 int cfe_reset_params(struct cpufreq_policy *policy)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr, policy->cpu);
-	struct cluster_tunables *tunable = cluster->tunables;
+	struct cluster_tunables *tunable = policy->governor_data;
 	int i,temp,index = 0;
 		
 	if(!thermal_monitor || !cluster || !tunable)
@@ -245,7 +248,7 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 
 skip:
 	do_cpufreq_mitigation(policy, cluster, UPDATE);
-	
+
 	return 0;
 }
 
