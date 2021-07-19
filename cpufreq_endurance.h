@@ -25,6 +25,7 @@ struct cluster_prop {
 	unsigned short int cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
 	bool gov_enabled;
+	long int cl_prev_temps;		// Last recorded temperature in Celsius
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	struct cluster_tunables *tunables;	
@@ -34,7 +35,7 @@ struct cluster_prop {
 struct sensor_monitor {
 	long int cur_temps;			// Present sensor temperature in Celsius
 	long int prev_temps;			// Previous sensor temperature in Celsius
-	long int updated_temps;		// current updated sesnor data 
+	long int prev_temps;			// Last updated sensor readings in Celsius
 };
 
 struct cluster_tunables {

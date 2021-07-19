@@ -193,7 +193,7 @@ int init_tunables(struct cpufreq_policy *policy)
 }
 
 /*
- * cfe_reset_params() resets the cluster max_freq ,nr_levels and prev_temps
+ * cfe_reset_params() resets the cluster max_freq ,nr_levels and cl_prev_temps
  * this helps us to do correct thermal mitigation and dynamically switch between
  * frequency and allows users to have a certain degree of control on the max frequency
  * which has direct impact on how the thermal mitigation proceeds.
@@ -226,9 +226,9 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 
 	cluster->cur_level = cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
-	thermal_monitor->prev_temps = thermal_monitor->cur_temps;
 	thermal_monitor->updated_temps = 0;
 	
+	cluster->cl_prev_temps = thermal_monitor->cur_temps;
 	/* check if throttle down is required if required then loop until it
 	 * reaches its correct level else just update the frequency and set it
 	 * to new requested frequency. 
@@ -286,8 +286,8 @@ static int govern_cpu(struct cluster_prop *cluster)
 	if(cluster->gov_enabled)
 		return 0;
 		
-	cl_temp_diff = thermal_monitor->cur_temps - thermal_monitor->prev_temps;
 	th_temp_diff = thermal_monitor->cur_temps - tunable->throt_temps;
+	cl_temp_diff = thermal_monitor->cur_temps - cluster->cl_prev_temps;
 	PDEBUG("cluster diff:%d throt diff:%d cpuid:%d",cl_temp_diff,th_temp_diff,policy->cpu);
 		
 	/* either we have not yet reached our cluster throttle temps or we dropped below
@@ -449,10 +449,10 @@ static int cfe_thermal_monitor_task(void *data)
 			goto sleep;
 			
 		/* compare with updated temps to see if the current temps changed or not */	
-		if(thermal_monitor->cur_temps != thermal_monitor->updated_temps)
+		if(thermal_monitor->cur_temps != thermal_monitor->prev_temps)
 			atomic_notifier_call_chain(&therm_alert_notifier_head, 0,0);
 			
-		thermal_monitor->updated_temps = thermal_monitor->cur_temps;	
+		thermal_monitor->prev_temps = thermal_monitor->cur_temps;
 sleep:
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(nap_time_ms));
