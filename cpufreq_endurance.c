@@ -37,7 +37,7 @@ static struct attribute_group *get_sysfs_attr(void);
 static struct task_struct *speedchange_task;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
-static struct mutex speedchange_lock;
+static struct mutex rw_lock;
 
 /*		
  * get_cpufreq_table() initialises little and big core frequency tables.
@@ -480,8 +480,11 @@ static ssize_t store_throttle_temperature(struct cpufreq_policy *policy,
  	if (kstrtouint(buf, 10, &throttle_temperature))
  		return -EINVAL;
 
+	mutex_lock(&rw_lock);
  	tunable->throttle_temperature = throttle_temperature;
  	cfe_reset_params(policy);
+	mutex_unlock(&rw_lock);
+
  	return count;
 }
 
@@ -502,8 +505,11 @@ static ssize_t store_temperature_diff(struct cpufreq_policy *policy,
  	if (kstrtouint(buf, 10, &temperature_diff))
  		return -EINVAL;
 
+	mutex_lock(&rw_lock);
  	tunable->temperature_diff = temperature_diff;
  	cfe_reset_params(policy);
+	mutex_unlock(&rw_lock);
+
  	return count;
 }
 
@@ -613,6 +619,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 					unsigned int event)
 {
 	struct cluster_prop *cluster;
+
 	switch (event) {
 	case CPUFREQ_GOV_START:
 		mutex_lock(&gov_lock);		
@@ -620,9 +627,9 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		mutex_unlock(&gov_lock);
 		break;
 	case CPUFREQ_GOV_LIMITS:
-		mutex_lock(&speedchange_lock);
+		mutex_lock(&rw_lock);
 		cfe_reset_params(policy);
-		mutex_unlock(&speedchange_lock);
+		mutex_unlock(&rw_lock);
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
@@ -655,7 +662,7 @@ static int __init cpufreq_gov_endurance_init(void)
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-2 };
 	
 	mutex_init(&gov_lock);
-	mutex_init(&speedchange_lock);
+	mutex_init(&rw_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
 	
 	speedchange_task =
