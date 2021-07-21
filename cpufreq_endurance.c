@@ -283,9 +283,9 @@ static int govern_cpu(struct cluster_prop *cluster)
 	int cl_temp_diff = 0, th_temp_diff = 0, level_diff = 0;
 	int temp = 0, ret = 0;
 
-	if(cluster->gov_enabled)
-		return 0;
-		
+	if(!cluster->gov_enabled)
+		return;
+
 	cl_temp_diff = thermal_monitor->cur_temps - cluster->cl_prev_temps;
 	th_temp_diff = thermal_monitor->cur_temps - tunable->throttle_temperature;
 	PDEBUG("cluster diff:%d throt diff:%d cpuid:%d",cl_temp_diff,th_temp_diff,policy->cpu);
