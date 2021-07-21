@@ -23,7 +23,7 @@
 #include "cpufreq_endurance.h"
 
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
-static unsigned short int min_step = 5;		// Max throttle step limit
+
 /* governor status check variables */
 static bool kthread_sleep = 0;
 unsigned int governor_enabled = 0;
@@ -181,10 +181,12 @@ int init_tunables(struct cpufreq_policy *policy)
 	if(policy->cpu <= NR_LITTLE){
 		tunable->throttle_temperature = THROTTLE_TEMP_LITTLE;
 		tunable->temperature_diff = TEMP_DIFF_LITTLE;
+		tunable->max_throttle_step = MAX_STEP_LITTLE;
 	}
 	else if(policy->cpu >= NR_BIG){
 		tunable->throttle_temperature = THROTTLE_TEMP_BIG;
 		tunable->temperature_diff = TEMP_DIFF_BIG;
+		tunable->max_throttle_step = MAX_STEP_BIG;
 	}
 	policy->governor_data = tunable;
 	cluster->tunables = tunable;
@@ -391,8 +393,7 @@ static int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 			PDEBUG("RESET");
 			break;
 		case THROTTLE_DOWN:
-			if((cluster->cur_level > (cluster->cur_level - min_step))
-							&& (cluster->cur_level != 0)){
+			if(cluster->cur_level - tunable->max_throttle_step){
 				cluster->cur_level--;
 				PDEBUG("THROTTLE_DOWN");
 			}else
@@ -513,6 +514,31 @@ static ssize_t store_temperature_diff(struct cpufreq_policy *policy,
  	return count;
 }
 
+static ssize_t show_max_throttle_step(struct cluster_tunables *tunable, char *buf)
+{
+	if(!tunable)
+		return 0;
+
+	return sprintf(buf, "%u\n", tunable->max_throttle_step);
+}
+
+static ssize_t store_max_throttle_step(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	struct cluster_tunables *tunable = policy->governor_data;
+	unsigned int max_throttle_step;
+
+ 	if (kstrtouint(buf, 10, &max_throttle_step))
+ 		return -EINVAL;
+
+	mutex_lock(&rw_lock);
+ 	tunable->max_throttle_step = max_throttle_step;
+ 	cfe_reset_params(policy);
+ 	mutex_unlock(&rw_lock);
+
+ 	return count;
+}
+
 /*
  * Create show/store routines (pulled from interactive governor)
  * pol: One governor instance per struct cpufreq_policy
@@ -537,6 +563,7 @@ store_gov_pol_sys(file_name)
 
 show_store_gov_pol_sys(throttle_temperature);
 show_store_gov_pol_sys(temperature_diff);
+show_store_gov_pol_sys(max_throttle_step);
 
 #define gov_pol_attr_rw(_name)					\
 static struct freq_attr _name##_gov_pol =				\
@@ -547,9 +574,12 @@ __ATTR(_name, 0664, show_##_name##_gov_pol, store_##_name##_gov_pol)
 
 gov_sys_pol_attr_rw(throttle_temperature);
 gov_sys_pol_attr_rw(temperature_diff);
+gov_sys_pol_attr_rw(max_throttle_step);
+
 static struct attribute *edgov_attributes[] = {
 	&throttle_temperature_gov_pol.attr,
 	&temperature_diff_gov_pol.attr,
+	&max_throttle_step_gov_pol.attr,
 	NULL
 };
 

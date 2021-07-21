@@ -41,6 +41,7 @@ struct sensor_monitor {
 struct cluster_tunables {
 	unsigned short throttle_temperature;	// Throttle temperature of the respective cluster
 	unsigned short temperature_diff;	// Temperature Diffrence
+	unsigned short max_throttle_step;	// Max Steps to be throttled 
 };
 
 typedef enum {
