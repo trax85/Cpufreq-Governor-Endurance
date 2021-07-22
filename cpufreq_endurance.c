@@ -198,27 +198,35 @@ int init_tunables(struct cpufreq_policy *policy)
  * cfe_reset_params() resets the cluster max_freq ,nr_levels and cl_prev_temps
  * this helps us to do correct thermal mitigation and dynamically switch between
  * frequency and allows users to have a certain degree of control on the max frequency
- * which has direct impact on how the thermal mitigation proceeds.
+ * which has direct impact on how the thermal mitigation proceeds. it has two states
+ * hard reset and soft reset state.
  */
-int cfe_reset_params(struct cpufreq_policy *policy)
+void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr, policy->cpu);
 	struct cluster_tunables *tunable = policy->governor_data;
-	int i,temp,index = 0;
-		
+	int temp = 0,lvl = 0,index = 0;
+
 	if(!thermal_monitor || !cluster || !tunable)
-		return 0;
-		
-	//PDEBUG("cfe reset");
-	
+		return;
+
+ 	/* check for reset state if its called by change due to one of the
+ 	 * governor parameters don't reset all parameters do soft reset.
+ 	 * when policy max_freq is changed explictly by user go for hard
+ 	 * reset.
+ 	 */
+ 	if(reset)
+ 		goto soft_reset;
+
 	/* policy limits change gets called multiple times eventhough change
-	 * happened only once so therefore add checks to see if the reset 
-	 * has already been performed. 
+	 * happened only once so therefore add checks to see if the reset
+	 * has already been performed.
 	 */
 	if(cluster->max_freq == policy->max)
 		goto skip;
-		
-	PDEBUG("Prev freq:%u Cur Freq:%u New freq:%u",cluster->max_freq,policy->cur,policy->max);	
+
+	PDEBUG("Prev freq:%u Cur Freq:%u New freq:%u",cluster->max_freq,
+					policy->cur, policy->max);
 	/* using index navigate to the equavalent frequency as that of
 	 * policy->max in our frequency table.
 	 */
@@ -230,6 +238,8 @@ int cfe_reset_params(struct cpufreq_policy *policy)
 	cluster->max_freq = cluster->prev_freq = policy->max;
 	thermal_monitor->updated_temps = 0;
 	
+
+soft_reset:
 	cluster->cl_prev_temps = thermal_monitor->cur_temps;
 	/* check if throttle down is required if required then loop until it
 	 * reaches its correct level else just update the frequency and set it
