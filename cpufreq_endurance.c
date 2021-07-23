@@ -236,8 +236,6 @@ void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
 
 	cluster->cur_level = cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
-	thermal_monitor->updated_temps = 0;
-	
 
 soft_reset:
 	cluster->cl_prev_temps = thermal_monitor->cur_temps;
@@ -248,20 +246,18 @@ soft_reset:
 	if(thermal_monitor->cur_temps >= tunable->throttle_temperature){
 		temp = thermal_monitor->cur_temps - tunable->throttle_temperature;
 		if(temp)
-			temp = temp / 2;
-		PDEBUG("go down by %d levels",temp);
-		for(i = 0; i <= temp; i++)
-			do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
+			temp = temp / tunable->temperature_diff;
+		temp += 1;
 	}
-	else
+	lvl = cluster->nr_levels - temp;
+	PDEBUG("go down by %d levels",temp);
+	if(cluster->cur_level != lvl){
+		cluster->cur_level = lvl;
 		do_cpufreq_mitigation(policy, cluster, UPDATE);
-
-	return 0;
+	}
 
 skip:
 	do_cpufreq_mitigation(policy, cluster, UPDATE);
-
-	return 0;
 }
 
 /*
