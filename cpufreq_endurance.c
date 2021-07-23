@@ -90,8 +90,8 @@ setup_done:
 	/* Cluster set initial frequency mitigation settings and parameters 
 	 * before handing over to speedchange_task() thread for rest of cpu governing tasks.
 	 */
-	cfe_reset_params(policy);
 	
+	cfe_reset_params(policy, 0);
 	governor_enabled++;
 	cluster->gov_enabled = 1;
 	PDEBUG("governor state:%d",governor_enabled);
@@ -493,7 +493,7 @@ static ssize_t store_throttle_temperature(struct cpufreq_policy *policy,
 
 	mutex_lock(&rw_lock);
  	tunable->throttle_temperature = throttle_temperature;
- 	cfe_reset_params(policy);
+ 	cfe_reset_params(policy, 1);
 	mutex_unlock(&rw_lock);
 
  	return count;
@@ -518,7 +518,7 @@ static ssize_t store_temperature_diff(struct cpufreq_policy *policy,
 
 	mutex_lock(&rw_lock);
  	tunable->temperature_diff = temperature_diff;
- 	cfe_reset_params(policy);
+ 	cfe_reset_params(policy, 1);
 	mutex_unlock(&rw_lock);
 
  	return count;
@@ -668,7 +668,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		break;
 	case CPUFREQ_GOV_LIMITS:
 		mutex_lock(&rw_lock);
-		cfe_reset_params(policy);
+		cfe_reset_params(policy, 0);
 		mutex_unlock(&rw_lock);
 		break;
 	case CPUFREQ_GOV_STOP:
