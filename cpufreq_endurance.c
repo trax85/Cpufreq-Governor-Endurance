@@ -157,7 +157,7 @@ int init_cpufreq_table(struct cpufreq_policy *policy)
 int init_tunables(struct cpufreq_policy *policy)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu);
-	struct cluster_tunables *tunable = cluster->tunables;
+	struct cluster_tunables *tunable = cluster->cached_tunables;
 	int err = 0;
 	
 	PDEBUG("%s:start",__func__);
@@ -176,6 +176,8 @@ int init_tunables(struct cpufreq_policy *policy)
 			return err;
 		}
 	}
+	else
+		goto end;
 
 	/* Initialise throttle temperature of big and little cluster */
 	if(policy->cpu <= NR_LITTLE){
@@ -188,9 +190,13 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->temperature_diff = TEMP_DIFF_BIG;
 		tunable->max_throttle_step = MAX_STEP_BIG;
 	}
+
+	cluster->cached_tunables = tunable;
+end:
+	/* holds refrence of tunable structure per-policy so it
+	 * it can be retrived for use later in show/store routines
+	 */
 	policy->governor_data = tunable;
-	cluster->tunables = tunable;
-	PDEBUG("%s:done",__func__);
 	return 0;
 }
 
@@ -645,8 +651,10 @@ static void cfe_cleanup(void)
 	
 	for_each_possible_cpu(cpu){
 		cluster = per_cpu(cluster_nr,cpu);
-		if(cluster)
+		if(cluster){
+			kfree(cluster->cached_tunables);
 			kfree(cluster);
+			}
 	}
 	kfree(thermal_monitor);
 }

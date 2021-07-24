@@ -28,7 +28,7 @@ struct cluster_prop {
 	long int cl_prev_temps;		// Last recorded temperature in Celsius
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
-	struct cluster_tunables *tunables;	
+	struct cluster_tunables *cached_tunables;	// Hold saved tunables parameters and restore when restarted
 	struct cpufreq_frequency_table *freq_table;	// Holds the Frequency table for the respective cluster
 };
 
