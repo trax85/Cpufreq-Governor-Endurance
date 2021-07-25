@@ -352,8 +352,10 @@ static int govern_cpu(struct cluster_prop *cluster)
 			ret = do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
 		}		
 	}
-		
-	return ret;
+		/* record current temperature */
+	if(ret)
+		cluster->cl_prev_temps = thermal_monitor->cur_temps;
+	return;
 
 end:
 	PDEBUG("no cpufreq changes required");
@@ -376,12 +378,9 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 		if((cpu == NR_BIG) || (cpu == NR_LITTLE)){
 			struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
 			if(cluster)
-				ret += govern_cpu(cluster);
+				govern_cpu(cluster);
 		}
 	}
-	/* record current temperature */
-	if(ret)
-		thermal_monitor->prev_temps = thermal_monitor->cur_temps;
 	kthread_sleep = 0;
 	return 0;
 }
