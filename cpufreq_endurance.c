@@ -158,9 +158,8 @@ int init_tunables(struct cpufreq_policy *policy)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr,policy->cpu);
 	struct cluster_tunables *tunable = cluster->cached_tunables;
-	int err = 0;
+	int rc = 0;
 	
-	PDEBUG("%s:start",__func__);
 	if(!tunable){
 		tunable = kzalloc(sizeof(struct cluster_tunables), 
 						GFP_KERNEL);
@@ -168,13 +167,6 @@ int init_tunables(struct cpufreq_policy *policy)
 			return -ENOMEM;
 
 		memset(tunable, 0, sizeof(struct cluster_tunables));
-
-		err = sysfs_create_group(get_governor_parent_kobj(policy),
-				get_sysfs_attr());
-		if(err){
-			kfree(tunable);
-			return err;
-		}
 	}
 	else
 		goto end;
@@ -190,14 +182,23 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->temperature_diff = TEMP_DIFF_BIG;
 		tunable->max_throttle_step = MAX_STEP_BIG;
 	}
-
-	cluster->cached_tunables = tunable;
+	
 end:
+	cluster->cached_tunables = tunable;
+	rc = sysfs_create_group(get_governor_parent_kobj(policy), 
+								get_sysfs_attr());
+	if (rc) {
+		pr_err("%s: couldn't create sysfs attributes: %d\n", __func__, rc);
+		goto err;
+	}
 	/* holds refrence of tunable structure per-policy so it
 	 * it can be retrived for use later in show/store routines
 	 */
 	policy->governor_data = tunable;
 	return 0;
+err:
+	policy->governor_data = NULL;
+	return -ENOMEM;
 }
 
 /*
