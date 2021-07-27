@@ -612,7 +612,7 @@ static struct attribute_group *get_sysfs_attr(void)
  * failure here the governor may behave unpredictably so redundancies have 
  * been added to prevent that.
  */
-void start_gov_setup(struct cpufreq_policy *policy)
+int start_gov_setup(struct cpufreq_policy *policy)
 {
 	int err = 0;
 	
@@ -630,14 +630,16 @@ void start_gov_setup(struct cpufreq_policy *policy)
 	{
 		atomic_notifier_chain_register(&therm_alert_notifier_head,
 								&therm_notifier_block);
-		wake_up_process(speedchange_task);
 		PDEBUG("Run kthread");
+		wake_up_process(speedchange_task);
 	}
+
 	PDEBUG("Finished setup");
-	return;
 	
+	return 0;
 error:
 	pr_err(KERN_INFO"%s: Failed to setup governor.\n", __func__);
+	return 0;
 }
 
 /* 
