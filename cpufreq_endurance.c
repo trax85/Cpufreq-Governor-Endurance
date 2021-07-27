@@ -29,13 +29,14 @@ static bool kthread_sleep = 0;
 unsigned int governor_enabled = 0;
 
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
+
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
+
 static struct sensor_monitor *thermal_monitor;
 static struct attribute_group *get_sysfs_attr(void);
 
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
-static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 static struct mutex rw_lock;
 
@@ -710,7 +711,6 @@ static int __init cpufreq_gov_endurance_init(void)
 	
 	mutex_init(&gov_lock);
 	mutex_init(&rw_lock);
-	spin_lock_init(&speedchange_cpumask_lock);
 	
 	speedchange_task =
 			kthread_create(cfe_thermal_monitor_task, NULL,
