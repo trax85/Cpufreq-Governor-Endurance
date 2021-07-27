@@ -291,7 +291,7 @@ static inline int update_sensor_data(void)
  * structure. precaution must be taken while passing cluster_prop as uninitilized variable ppol can 
  * cause much pain(kernel panic!). 
  */
-static int govern_cpu(struct cluster_prop *cluster)
+static void govern_cpu(struct cluster_prop *cluster)
 {
 	struct cpufreq_policy *policy = cluster->ppol;
 	struct cluster_tunables *tunable = policy->governor_data;
@@ -360,7 +360,6 @@ static int govern_cpu(struct cluster_prop *cluster)
 
 end:
 	PDEBUG("no cpufreq changes required");
-	return 0;
 }
 
 static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
