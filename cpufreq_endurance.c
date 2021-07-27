@@ -685,6 +685,8 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 			atomic_notifier_chain_unregister(
 						&therm_alert_notifier_head,
 						&therm_notifier_block);
+		sysfs_remove_group(get_governor_parent_kobj(policy),get_sysfs_attr());
+		policy->governor_data = NULL;
 		mutex_unlock(&gov_lock);
 		break;
 	default:
