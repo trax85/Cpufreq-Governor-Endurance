@@ -217,8 +217,9 @@ void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
 
 	if(!thermal_monitor || !cluster || !tunable)
 		return;
-
- 	/* check for reset state if its called by change due to one of the
+ 	
+ 	mutex_lock(&rw_lock);
+ 	/* check for reset state if its called by change due to one of the 
  	 * governor parameters don't reset all parameters do soft reset.
  	 * when policy max_freq is changed explictly by user go for hard
  	 * reset.
@@ -226,6 +227,7 @@ void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
  	if(reset)
  		goto soft_reset;
 
+ 		
 	/* policy limits change gets called multiple times eventhough change
 	 * happened only once so therefore add checks to see if the reset
 	 * has already been performed.
@@ -263,9 +265,11 @@ soft_reset:
 		cluster->cur_level = lvl;
 		do_cpufreq_mitigation(policy, cluster, UPDATE);
 	}
-
+	mutex_unlock(&rw_lock);
+	return;
 skip:
 	do_cpufreq_mitigation(policy, cluster, UPDATE);
+	mutex_unlock(&rw_lock);
 }
 
 /*
@@ -493,10 +497,8 @@ static ssize_t store_throttle_temperature(struct cpufreq_policy *policy,
  	if (kstrtouint(buf, 10, &throttle_temperature))
  		return -EINVAL;
 
-	mutex_lock(&rw_lock);
  	tunable->throttle_temperature = throttle_temperature;
  	cfe_reset_params(policy, 1);
-	mutex_unlock(&rw_lock);
 
  	return count;
 }
@@ -518,10 +520,8 @@ static ssize_t store_temperature_diff(struct cpufreq_policy *policy,
  	if (kstrtouint(buf, 10, &temperature_diff))
  		return -EINVAL;
 
-	mutex_lock(&rw_lock);
  	tunable->temperature_diff = temperature_diff;
  	cfe_reset_params(policy, 1);
-	mutex_unlock(&rw_lock);
 
  	return count;
 }
@@ -543,10 +543,8 @@ static ssize_t store_max_throttle_step(struct cpufreq_policy *policy,
  	if (kstrtouint(buf, 10, &max_throttle_step))
  		return -EINVAL;
 
-	mutex_lock(&rw_lock);
  	tunable->max_throttle_step = max_throttle_step;
- 	cfe_reset_params(policy);
- 	mutex_unlock(&rw_lock);
+ 	cfe_reset_params(policy, 1);
 
  	return count;
 }
@@ -668,14 +666,12 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 
 	switch (event) {
 	case CPUFREQ_GOV_START:
-		mutex_lock(&gov_lock);		
+		mutex_lock(&gov_lock);
 		start_gov_setup(policy);
 		mutex_unlock(&gov_lock);
 		break;
 	case CPUFREQ_GOV_LIMITS:
-		mutex_lock(&rw_lock);
 		cfe_reset_params(policy, 0);
-		mutex_unlock(&rw_lock);
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);

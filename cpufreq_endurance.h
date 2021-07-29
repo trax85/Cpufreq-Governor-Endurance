@@ -55,8 +55,8 @@ typedef enum {
 /* Main Function prototypes */
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *);
-void cfe_reset_params(struct cpufreq_policy *,struct cluster_prop *);
 int do_cpufreq_mitigation(struct cpufreq_policy *, 
+void cfe_reset_params(struct cpufreq_policy *,bool);
 int init_tunables(struct cpufreq_policy *);
 static inline int update_sensor_data(void);
 int do_cpufreq_mitigation(struct cpufreq_policy *,
