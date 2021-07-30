@@ -400,9 +400,11 @@ static struct notifier_block therm_notifier_block = {
  * it modifies the policy max frequency to the latest max as per the event signal
  * paseed by the calling function.
  */
-static int do_cpufreq_mitigation(struct cpufreq_policy *policy, 
-					struct cluster_prop *cluster, state_info event){
-	
+static int do_cpufreq_mitigation(struct cpufreq_policy *policy,
+					struct cluster_prop *cluster, state_info event)
+{
+	struct cluster_tunables *tunable = policy->governor_data;
+
 	switch(event){
 		case RESET:	
 			cluster->cur_level = cluster->nr_levels;
@@ -413,7 +415,7 @@ static int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 				cluster->cur_level--;
 				PDEBUG("THROTTLE_DOWN");
 			}else
-				printk("MAX_THROTTLE");
+				PDEBUG("MAXED OUT THROTTLE");
 			break;
 		case THROTTLE_UP:
 			if(cluster->cur_level < cluster->nr_levels){
@@ -427,7 +429,7 @@ static int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 	}
 	
 	PDEBUG("cur_temps:%ld throt_temps:%d prev_temps:%ld",thermal_monitor->cur_temps,
-						cluster->throt_temps,thermal_monitor->prev_temps);
+			tunable->throttle_temperature, cluster->cl_prev_temps);
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
 			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
 
