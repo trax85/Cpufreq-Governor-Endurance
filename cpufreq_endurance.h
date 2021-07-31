@@ -19,6 +19,8 @@ static unsigned int cfe_debug = 1;
 #define TEMP_DIFF_LITTLE 3
 #define TEMP_DIFF_BIG 4
 #define CLUSTER_NR 2
+#define MAX_STEP_LITTLE 4		// Max steps the core should throttle down
+#define MAX_STEP_BIG 5
 
 struct cluster_prop {
 	unsigned short int nr_levels;		// Stores number of total levels
@@ -55,11 +57,10 @@ typedef enum {
 /* Main Function prototypes */
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *);
-int do_cpufreq_mitigation(struct cpufreq_policy *, 
 void cfe_reset_params(struct cpufreq_policy *,bool);
 int init_tunables(struct cpufreq_policy *);
 static inline int update_sensor_data(void);
-int do_cpufreq_mitigation(struct cpufreq_policy *,
+static int do_cpufreq_mitigation(struct cpufreq_policy *, 
 					struct cluster_prop *, state_info);
 int start_gov_setup(struct cpufreq_policy *);
 

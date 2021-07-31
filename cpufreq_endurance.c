@@ -371,7 +371,6 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 				void *data)
 {
 	unsigned int cpu = 0;
-	int ret = 0;
 	
 	/* sleep cfe thread during this process as we dont want the cur_temps updating 
 	 * inbetween the process as this could result in frequency of clusters further
