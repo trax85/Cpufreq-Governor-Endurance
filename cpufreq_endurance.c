@@ -1,12 +1,14 @@
 /*
  *  linux/drivers/cpufreq/cpufreq_endurance.c
  *
- *  Copyright (C) 2002 - 2003 Dominik Brodowski <linux@brodo.de>
+ *  Endurance CpuFreq Governor
  *
+ *  Author: Tejas Udupa <tejasudupa1285@gmail>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License
+ *  as published by the Free Software Foundation; version 2
+ *  of the License.
  *
  */
 
@@ -55,8 +57,6 @@ int get_cpufreq_table(struct cpufreq_policy *policy){
 	if(cluster)
 		goto setup_done;
 	
-	PDEBUG("%s: starting frequency table init of core:%d", __func__,policy->cpu);
-	
 	/* Start cpu frequency table initialization */
 	ret = init_cpufreq_table(policy);
 	if(ret < 0)
@@ -99,7 +99,7 @@ setup_done:
 	return ret;
 
 failed_inittbl:
-	pr_err(KERN_WARNING"%s: Failed to initialise cpufreq table for core:%d\terr=%d", __func__,policy->cpu,ret);
+	pr_err(KERN_WARNING"%s: Failed to initialise governor for core:%d\terr=%d", __func__,policy->cpu,ret);
 failed_gettbl:
 	return ret;
 }
@@ -279,11 +279,12 @@ skip:
 static inline int update_sensor_data(void)
 {
 	int ret = 0;
-	
-	if(ret){
+
 	ret = sensor_get_temp(SENSOR_ID,&thermal_monitor->cur_temps);
-		pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n", __func__, SENSOR_ID);
-		thermal_monitor->cur_temps = 0; // give zero to disable temperature based cpu governing
+	if(ret){
+		pr_err(KERN_WARNING"%s: Failed to get sensor: %d temprature data.\n",
+								__func__, SENSOR_ID);
+		thermal_monitor->cur_temps = 0;
 		return 1;
 	}
 	
@@ -372,9 +373,9 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 {
 	unsigned int cpu = 0;
 	
-	/* sleep cfe thread during this process as we dont want the cur_temps updating 
-	 * inbetween the process as this could result in frequency of clusters further
-	 * away being reported as to not having enough threshold to mitigate frequency.
+	/* sleep cfe thread during this process as we dont want the cur_temps updating
+	 * inbetween the process as this could result in frequency of higher clusters
+	 * being reported as to not having enough threshold to mitigate frequency.
 	 */
 	kthread_sleep = 1;
 	/* loop through one core in each cluster */

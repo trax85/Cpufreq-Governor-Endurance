@@ -10,24 +10,24 @@ static unsigned int cfe_debug = 1;
 	}								\
 }
 
-/* Individual device configuration */
+/* Individual device default configuration */
 #define NR_LITTLE 3			// starting little cluster cpu id
 #define NR_BIG	4			// starting big cluster cpu id
 #define SENSOR_ID 5			// Sensor ID in themal zone
 #define THROTTLE_TEMP_LITTLE 44	// Throttle temperature of little cluster
 #define THROTTLE_TEMP_BIG 46		// Throttle temperature of big cluster
-#define TEMP_DIFF_LITTLE 3
+#define TEMP_DIFF_LITTLE 3		// Temprature diffrence after which core must be throttled
 #define TEMP_DIFF_BIG 4
-#define CLUSTER_NR 2
+#define CLUSTER_NR 2			// Number of clusters device has
 #define MAX_STEP_LITTLE 4		// Max steps the core should throttle down
 #define MAX_STEP_BIG 5
 
 struct cluster_prop {
-	unsigned short int nr_levels;		// Stores number of total levels
-	unsigned short int cur_level;		// Stores current level of throttle
+	unsigned short nr_levels;		// Stores number of total levels
+	unsigned short cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
-	bool gov_enabled;
 	long int cl_prev_temps;		// Last recorded temperature in Celsius
+	bool gov_enabled;			// Governor state of cluster
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	struct cluster_tunables *cached_tunables;	// Hold saved tunables parameters and restore when restarted
@@ -35,8 +35,7 @@ struct cluster_prop {
 };
 
 struct sensor_monitor {
-	long int cur_temps;			// Present sensor temperature in Celsius
-	long int prev_temps;			// Previous sensor temperature in Celsius
+	long int cur_temps;			// Present sensor readings in Celsius
 	long int prev_temps;			// Last updated sensor readings in Celsius
 };
 
