@@ -293,79 +293,53 @@ static inline int update_sensor_data(void)
 
 /*	
  * govern_cpu() calls for cpufreq mitigation based on temperature inputs from the respective sensor.
- * this function only sends signal to do_cpufreq_mitigation() and doesn't edit/modify cpufreq_prop
- * structure. precaution must be taken while passing cluster_prop as uninitilized variable ppol can 
- * cause much pain(kernel panic!). 
+ * determines which frequency to throttle down/up to depending of the temperature of sensor.
+ * precaution must be taken while passing cluster_prop as uninitilized variable ppol can
+ * cause much pain(kernel panic!).
  */
 static void govern_cpu(struct cluster_prop *cluster)
 {
 	struct cpufreq_policy *policy = cluster->ppol;
 	struct cluster_tunables *tunable = policy->governor_data;
-	int cl_temp_diff = 0, th_temp_diff = 0, level_diff = 0;
-	int temp = 0, ret = 0;
-
+	int th_temp_diff = 0;
+	int calc_temps = 0;
+	
 	if(!cluster->gov_enabled)
 		return;
 
-	cl_temp_diff = thermal_monitor->cur_temps - cluster->cl_prev_temps;
 	th_temp_diff = thermal_monitor->cur_temps - tunable->throttle_temperature;
-	PDEBUG("cluster diff:%d throt diff:%d cpuid:%d",cl_temp_diff,th_temp_diff,policy->cpu);
-		
+	PDEBUG("throt diff:%d cur_temp:%ld cpuid:%d", th_temp_diff, 
+					thermal_monitor->cur_temps, policy->cpu);
+
 	/* either we have not yet reached our cluster throttle temps or we dropped below
-	 * throttle temps, so reset cluster levels and push max frequency of that cluster 
+	 * throttle temps, so reset cluster levels and push max frequency of that cluster
 	 */
-	if(th_temp_diff < 0){
-		PDEBUG("Currrent temps lower than throttle temps");
-		if(cluster->cl_prev_temps < tunable->throttle_temperature)
-			goto end;
-		else
-			ret = do_cpufreq_mitigation(policy, cluster, RESET);
+	if(th_temp_diff < 0) {
+		PDEBUG("Currrent temps Lower than throttle temps");
+		if(cluster->nr_levels == cluster->cur_level)
+			return;
+		cluster->cur_level = cluster->nr_levels;
+		do_cpufreq_mitigation(policy, cluster);
 	}
-	/* we have same or higher temps as that of throttle temps for that respective cluster,
-	 * so we compare for five cases :-
-	 * 1.temps have just reached throttle points
-	 * 2.temps have gone past throttle points
-	 * 3.temps have started drop to downward slope 
-	 */
 	else {
-		temp = cl_temp_diff * -1;
-		level_diff = cluster->nr_levels - cluster->cur_level;
-		PDEBUG("Current temps higher than throttle temps");
-		if(!th_temp_diff && (cl_temp_diff > 0)){
-			PDEBUG("temps have reached trip point");
-			ret = do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
-		}
-		
-		/* temps have started to drop either due to low avg load or idleing of the cluster,
-	   	 * so start throttling the core up by one level as the temps drop. 
-	   	 */
-		else if(temp >= tunable->temperature_diff){
-			PDEBUG("current temps lower than previous");
-			ret = do_cpufreq_mitigation(policy, cluster, THROTTLE_UP);
-		}
-		
-		/* we have reached max throttle frequency and going lower will only make 
-		 * the device sluggish so maintain the frequency. 
+		PDEBUG("Currrent temps Higher than throttle temps");
+		calc_temps = cluster->nr_levels - 
+				(th_temp_diff / tunable->temperature_diff + 1);
+		/* exit if threshold was not reached or max throttle step was
+		 * reached as we dont throttle down below user defined threshold
+		 * to reduce performance impact due to further throttle.
 		 */
-		else if(level_diff == tunable->max_throttle_step)
+		if((cluster->cur_level == calc_temps) ||
+				(cluster->cur_level < tunable->max_throttle_step))
 			goto end;
-	
-		/* temps have gone past throttle points and now frequency of respective cluster
-	   	 * is being mitigated down  through multiple levels depending on how much the
-	   	 * temps have gone up since last recorded. 
-	   	 */
-		else if(cl_temp_diff >= tunable->temperature_diff){
-			PDEBUG("current temps higher than previous");
-			ret = do_cpufreq_mitigation(policy, cluster, THROTTLE_DOWN);
-		}		
+			
+		cluster->cur_level = calc_temps;
+		do_cpufreq_mitigation(policy, cluster);
 	}
-		/* record current temperature */
-	if(ret)
-		cluster->cl_prev_temps = thermal_monitor->cur_temps;
 	return;
 
 end:
-	PDEBUG("no cpufreq changes required");
+	PDEBUG("No cpufreq changes required");
 }
 
 static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
