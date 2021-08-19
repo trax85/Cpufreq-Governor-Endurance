@@ -45,22 +45,14 @@ struct cluster_tunables {
 	unsigned short max_throttle_step;	// Max Steps to be throttled 
 };
 
-typedef enum {
-	NO_CHANGE = 0,
-	THROTTLE_UP,
-	THROTTLE_DOWN,
-	RESET,
-	UPDATE
-}state_info;
-
 /* Main Function prototypes */
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *);
 void cfe_reset_params(struct cpufreq_policy *,bool);
 int init_tunables(struct cpufreq_policy *);
 static inline int update_sensor_data(void);
-static int do_cpufreq_mitigation(struct cpufreq_policy *, 
-					struct cluster_prop *, state_info);
+static inline void do_cpufreq_mitigation(struct cpufreq_policy *, 
+					struct cluster_prop *);
 int start_gov_setup(struct cpufreq_policy *);
 
 #endif
