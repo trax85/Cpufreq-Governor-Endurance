@@ -203,7 +203,7 @@ err:
 }
 
 /*
- * cfe_reset_params() resets the cluster max_freq ,nr_levels and cl_prev_temps
+ * cfe_reset_params() resets the cluster max_freq and nr_levels
  * this helps us to do correct thermal mitigation and dynamically switch between
  * frequency and allows users to have a certain degree of control on the max frequency
  * which has direct impact on how the thermal mitigation proceeds. it has two states
@@ -244,11 +244,11 @@ void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
 		index++;
 	PDEBUG("Reseting Index to:%d",index);
 
-	cluster->cur_level = cluster->nr_levels = index;
+	cluster->cur_level = 0;
+	cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
 
 soft_reset:
-	cluster->cl_prev_temps = thermal_monitor->cur_temps;
 	/* check if throttle down is required if required then loop until it
 	 * reaches its correct level else just update the frequency and set it
 	 * to new requested frequency. 
@@ -263,12 +263,11 @@ soft_reset:
 	PDEBUG("go down by %d levels",temp);
 	if(cluster->cur_level != lvl){
 		cluster->cur_level = lvl;
-		do_cpufreq_mitigation(policy, cluster, UPDATE);
+		do_cpufreq_mitigation(policy, cluster);
 	}
 	mutex_unlock(&rw_lock);
 	return;
 skip:
-	do_cpufreq_mitigation(policy, cluster, UPDATE);
 	mutex_unlock(&rw_lock);
 }
 
@@ -352,6 +351,7 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 	 * being reported as to not having enough threshold to mitigate frequency.
 	 */
 	kthread_sleep = 1;
+	mutex_lock(&rw_lock);
 	/* loop through one core in each cluster */
 	for_each_possible_cpu(cpu){
 		if((cpu == NR_BIG) || (cpu == NR_LITTLE)){
@@ -360,6 +360,7 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 				govern_cpu(cluster);
 		}
 	}
+	mutex_unlock(&rw_lock);
 	kthread_sleep = 0;
 	return 0;
 }

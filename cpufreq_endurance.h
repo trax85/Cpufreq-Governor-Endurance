@@ -26,7 +26,6 @@ struct cluster_prop {
 	unsigned short nr_levels;		// Stores number of total levels
 	unsigned short cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
-	long int cl_prev_temps;		// Last recorded temperature in Celsius
 	bool gov_enabled;			// Governor state of cluster
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
