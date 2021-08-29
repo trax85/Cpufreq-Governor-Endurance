@@ -27,7 +27,6 @@
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
 static unsigned int nr_cpu_idle = 0;
 /* governor status check variables */
-static bool kthread_sleep = 0;
 static bool idle_loop = 0;
 unsigned int governor_enabled = 0;
 
@@ -352,23 +351,17 @@ static int thermal_change_callback(struct notifier_block *nb, unsigned long val,
 				void *data)
 {
 	unsigned int cpu = 0;
-	
-	/* sleep cfe thread during this process as we dont want the cur_temps updating
-	 * inbetween the process as this could result in frequency of higher clusters
-	 * being reported as to not having enough threshold to mitigate frequency.
-	 */
-	kthread_sleep = 1;
 	mutex_lock(&rw_lock);
+
 	/* loop through one core in each cluster */
 	for_each_possible_cpu(cpu){
-		if((cpu == NR_BIG) || (cpu == NR_LITTLE)){
+		if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
 			struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
 			if(cluster)
 				govern_cpu(cluster);
 		}
 	}
 	mutex_unlock(&rw_lock);
-	kthread_sleep = 0;
 	return 0;
 }
 
@@ -514,10 +507,6 @@ static int cfe_thermal_monitor_task(void *data)
 			set_current_state(TASK_INTERRUPTIBLE);
 			schedule();
 		}
-		
-		if(kthread_sleep)
-			goto sleep;
-		
 		/* skip thermal checks if both clusters idle */
 		if(idle_loop && (nr_cpu_idle == 2))
 			goto skip;
