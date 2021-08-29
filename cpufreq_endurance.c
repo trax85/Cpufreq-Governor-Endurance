@@ -38,7 +38,7 @@ static struct sensor_monitor *thermal_monitor;
 static struct attribute_group *get_sysfs_attr(void);
 
 /* realtime thread handles frequency scaling */
-static struct task_struct *speedchange_task;
+static struct task_struct *therm_mon_task;
 static struct mutex gov_lock;
 static struct mutex rw_lock;
 
@@ -390,7 +390,7 @@ static inline void do_cpufreq_mitigation(struct cpufreq_policy *policy,
 }
 
 /*
- * cpufreq_endurance_speedchange_task() calls the govern_cpu() function.
+ * therm_mon_task() calls the govern_cpu() function.
  * if this function fails te governor is essentially dead, locks have been put to mitigate
  * contention issues that may arise during execution.
  */
@@ -657,26 +657,26 @@ static int __init cpufreq_gov_endurance_init(void)
 	
 	mutex_init(&gov_lock);
 	mutex_init(&rw_lock);
-	
-	speedchange_task =
+
+	therm_mon_task =
 			kthread_create(cfe_thermal_monitor_task, NULL,
 				       "cfendurance");
-	if (IS_ERR(speedchange_task))
-		return PTR_ERR(speedchange_task);
+	if (IS_ERR(therm_mon_task))
+		return PTR_ERR(therm_mon_task);
 
-	sched_setscheduler_nocheck(speedchange_task, SCHED_FIFO, &param);
-	get_task_struct(speedchange_task);
-	
+	sched_setscheduler_nocheck(therm_mon_task, SCHED_FIFO, &param);
+	get_task_struct(therm_mon_task);
+
 	/* NB: wake up so the thread does not look hung to the freezer */
-	wake_up_process(speedchange_task);
-	
+	wake_up_process(therm_mon_task);
+
 	return cpufreq_register_governor(&cpufreq_gov_endurance);
 }
 
 static void __exit cpufreq_gov_endurance_exit(void)
 {
-	kthread_stop(speedchange_task);
-	put_task_struct(speedchange_task);
+	kthread_stop(therm_mon_task);
+	put_task_struct(therm_mon_task);
 	cfe_cleanup();
 	cpufreq_unregister_governor(&cpufreq_gov_endurance);
 }
