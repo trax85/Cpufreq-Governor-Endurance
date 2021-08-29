@@ -515,17 +515,20 @@ static int cfe_thermal_monitor_task(void *data)
 		if(kthread_sleep)
 			goto sleep;
 		
+		/* skip thermal checks if both clusters idle */
+		if(idle_loop && (nr_cpu_idle == 2))
+			goto skip;
+
 		/* get updated thermal reading */
 		ret = update_sensor_data();
 		if(ret)
-			goto sleep;
-			
-		/* compare with updated temps to see if the current temps changed or not */	
+			goto skip;
+
+		/* compare with updated temps to see if the current temps changed or not */
 		if(thermal_monitor->cur_temps != thermal_monitor->prev_temps)
 			atomic_notifier_call_chain(&therm_alert_notifier_head, 0,0);
-			
 		thermal_monitor->prev_temps = thermal_monitor->cur_temps;
-sleep:
+skip:
 		atomic_notifier_call_chain(&load_change_notifier_head,0,0);
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(nap_time_ms));
@@ -688,7 +691,7 @@ int start_gov_setup(struct cpufreq_policy *policy)
 		atomic_notifier_chain_register(&load_change_notifier_head,
 								&load_chg_notifier_block);
 		PDEBUG("Run kthread");
-		wake_up_process(speedchange_task);
+		wake_up_process(therm_mon_task);
 	}
 
 	PDEBUG("Finished setup");
