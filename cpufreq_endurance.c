@@ -476,7 +476,7 @@ static struct notifier_block load_chg_notifier_block = {
 
 /*
  * do_cpufreq_mitigation() it modifies the policy max frequency to the latest max
- * updated by the calling function
+ * updated by the calling function and sets the frequency on the cluster.
  */
 static inline void do_cpufreq_mitigation(struct cpufreq_policy *policy,
 							struct cluster_prop *cluster)
@@ -487,11 +487,14 @@ static inline void do_cpufreq_mitigation(struct cpufreq_policy *policy,
 			tunable->throttle_temperature, thermal_monitor->prev_temps);
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
 			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
-
-	policy->max = cluster->freq_table[cluster->cur_level].frequency;
-	cluster->prev_freq = policy->max;
+	if(cluster->idle_cpu)
+		policy->max = tunable->idle_freq;
+	else{
+		policy->max = cluster->freq_table[cluster->cur_level].frequency;
+		cluster->prev_freq = policy->max;
+	}
 	__cpufreq_driver_target(policy, policy->max,
-						CPUFREQ_RELATION_H);
+						CPUFREQ_RELATION_C);
 }
 
 /*
