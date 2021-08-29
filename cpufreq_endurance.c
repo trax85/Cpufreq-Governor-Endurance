@@ -25,14 +25,17 @@
 #include "cpufreq_endurance.h"
 
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
-
+static unsigned int nr_cpu_idle = 0;
 /* governor status check variables */
 static bool kthread_sleep = 0;
+static bool idle_loop = 0;
 unsigned int governor_enabled = 0;
 
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
+ATOMIC_NOTIFIER_HEAD(load_change_notifier_head);
 
 static DEFINE_PER_CPU(struct cluster_prop *, cluster_nr);
+static DEFINE_PER_CPU(struct per_cpu_info, cpuinfo);
 
 static struct sensor_monitor *thermal_monitor;
 static struct attribute_group *get_sysfs_attr(void);
@@ -177,11 +180,15 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->throttle_temperature = THROTTLE_TEMP_LITTLE;
 		tunable->temperature_diff = TEMP_DIFF_LITTLE;
 		tunable->max_throttle_step = MAX_STEP_LITTLE;
+		tunable->idle_threshold = L_IDLE_TRESH;
+		tunable->idle_freq = L_BELO_TRESHFREQ;
 	}
 	else if(policy->cpu <= NR_BIG){
 		tunable->throttle_temperature = THROTTLE_TEMP_BIG;
 		tunable->temperature_diff = TEMP_DIFF_BIG;
 		tunable->max_throttle_step = MAX_STEP_BIG;
+		tunable->idle_threshold = B_IDLE_TRESH;
+		tunable->idle_freq = B_BELO_TRESHFREQ;
 	}
 	
 end:
@@ -370,6 +377,104 @@ static struct notifier_block therm_notifier_block = {
 };
 
 /*
+ * update_load():- gives current load on the respective cpu core.
+ */
+static u64 update_load(int cpu)
+{
+	struct per_cpu_info *pcpu = &per_cpu(cpuinfo, cpu);
+	u64 cur_wall_time;
+	u64 cur_idle_time;
+	int io_busy = 0;
+	unsigned int wall_time, idle_time, load = 0;
+
+	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time, io_busy);
+	wall_time = (unsigned int)
+			(cur_wall_time - pcpu->prev_cpu_wall);
+	idle_time = (unsigned int)
+			(cur_idle_time - pcpu->prev_cpu_idle);
+
+	pcpu->prev_cpu_wall = cur_wall_time;
+	pcpu->prev_cpu_idle = cur_idle_time;
+	load = 100 * (wall_time - idle_time) / wall_time;
+
+	return load;
+}
+
+/*
+ * idle_threshold_check():-
+ * @threshold:- stores idle threshold, if +ve then cores are idle.
+ * Checks if the average load on the cluster of cores is less than threshold,
+ * if lower then frequency is downshifted into idle frequency and sets
+ * idle_loop(if both clusters idle) so that temprature governing is disabled
+ * until load rises above threshold. the nap time is reduced so as
+ * to reduce jank when there is a sudden load rise.
+ */
+static void idle_threshold_check(struct cluster_prop *cluster ,int load_avg)
+{
+	struct cpufreq_policy *policy = cluster->ppol;
+	struct cluster_tunables *tunable = policy->governor_data;
+	int threshold;
+
+	threshold = tunable->idle_threshold - load_avg;
+	if(threshold > 0){
+		if(policy->cur == tunable->idle_freq)
+			return;
+		idle_loop = 1;
+		nap_time_ms = 500;
+		nr_cpu_idle++;
+		cluster->idle_cpu = 1;
+	}
+	else if(policy->cur == tunable->idle_freq){
+		nr_cpu_idle--;
+		cluster->idle_cpu = 0;
+		if(!nr_cpu_idle){
+			idle_loop = 0;
+			nap_time_ms = 1500;
+		}
+	}
+	do_cpufreq_mitigation(policy, cluster);
+}
+
+/*
+ * load_change_callback():-
+ * @core:- keeps count of the number of cores in cluster.
+ * @load:- stores current reported load.
+ * @load_avg:- stores respective cluster's average load.
+ * This function responds to load change events triggered by the main
+ * thread at regualr intervals and calculates the current load and
+ * average load and invokes idle_threshold_check() for descision making.
+ */
+static int load_change_callback(struct notifier_block *nb, unsigned long val,
+				void *data)
+{
+	unsigned int cpu = 0;
+	int core = 0, load = 0, load_avg, temp;
+
+	for_each_possible_cpu(cpu){
+		struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
+		if(cluster && cluster->gov_enabled){
+			temp = update_load(cpu);
+			PDEBUG("load:%d", temp);
+			if(temp >= 60)
+				load += 400;
+			load += temp;
+			core++;
+			if((cpu == NR_LITTLE) || (cpu == NR_BIG)){
+				load_avg = load / core;
+				idle_threshold_check(cluster, load_avg);
+				core = load = 0;
+			}
+		}
+	}
+
+	return 0;
+}
+
+static struct notifier_block load_chg_notifier_block = {
+	.notifier_call = load_change_callback,
+};
+
+/*
  * do_cpufreq_mitigation() it modifies the policy max frequency to the latest max
  * updated by the calling function
  */
@@ -421,6 +526,7 @@ static int cfe_thermal_monitor_task(void *data)
 			
 		thermal_monitor->prev_temps = thermal_monitor->cur_temps;
 sleep:
+		atomic_notifier_call_chain(&load_change_notifier_head,0,0);
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(nap_time_ms));
 	}
@@ -579,6 +685,8 @@ int start_gov_setup(struct cpufreq_policy *policy)
 	{
 		atomic_notifier_chain_register(&therm_alert_notifier_head,
 								&therm_notifier_block);
+		atomic_notifier_chain_register(&load_change_notifier_head,
+								&load_chg_notifier_block);
 		PDEBUG("Run kthread");
 		wake_up_process(speedchange_task);
 	}
@@ -628,10 +736,14 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		governor_enabled--;
 		cluster = per_cpu(cluster_nr, policy->cpu);
 		cluster->gov_enabled = 0;
-		if(!governor_enabled)
+		if(!governor_enabled){
 			atomic_notifier_chain_unregister(
-						&therm_alert_notifier_head,
-						&therm_notifier_block);
+					&therm_alert_notifier_head,
+					&therm_notifier_block);
+			atomic_notifier_chain_unregister(
+					&load_change_notifier_head,
+					&load_chg_notifier_block);
+		}
 		sysfs_remove_group(get_governor_parent_kobj(policy),get_sysfs_attr());
 		policy->governor_data = NULL;
 		mutex_unlock(&gov_lock);
