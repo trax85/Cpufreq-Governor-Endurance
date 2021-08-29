@@ -21,12 +21,18 @@ static unsigned int cfe_debug = 1;
 #define CLUSTER_NR 2			// Number of clusters device has
 #define MAX_STEP_LITTLE 4		// Max steps the core should throttle down
 #define MAX_STEP_BIG 5
+#define L_IDLE_TRESH	35
+#define L_BELO_TRESHFREQ	960000
+#define B_IDLE_TRESH	30
+#define B_BELO_TRESHFREQ	998400
+
 
 struct cluster_prop {
 	unsigned short nr_levels;		// Stores number of total levels
 	unsigned short cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
 	bool gov_enabled;			// Governor state of cluster
+	bool idle_cpu;
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	struct cluster_tunables *cached_tunables;	// Hold saved tunables parameters and restore when restarted
@@ -38,10 +44,17 @@ struct sensor_monitor {
 	long int prev_temps;			// Last updated sensor readings in Celsius
 };
 
+struct per_cpu_info {
+	unsigned int prev_cpu_wall;		// Previous cpu wall time
+	unsigned int prev_cpu_idle;		// Previous cpu idle time
+};
+
 struct cluster_tunables {
 	unsigned short throttle_temperature;	// Throttle temperature of the respective cluster
 	unsigned short temperature_diff;	// Temperature Diffrence
-	unsigned short max_throttle_step;	// Max Steps to be throttled 
+	unsigned short max_throttle_step;	// Max Steps to be throttled
+	unsigned short idle_threshold;	// Threshold for idleing
+	unsigned int idle_freq;		// Frequency during idle
 };
 
 /* Main Function prototypes */
