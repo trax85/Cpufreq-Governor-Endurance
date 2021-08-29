@@ -12,7 +12,7 @@ static unsigned int cfe_debug = 1;
 
 /* Individual device default configuration */
 #define NR_LITTLE 3			// starting little cluster cpu id
-#define NR_BIG	4			// starting big cluster cpu id
+#define NR_BIG	5			// starting big cluster cpu id
 #define SENSOR_ID 5			// Sensor ID in themal zone
 #define THROTTLE_TEMP_LITTLE 44	// Throttle temperature of little cluster
 #define THROTTLE_TEMP_BIG 46		// Throttle temperature of big cluster

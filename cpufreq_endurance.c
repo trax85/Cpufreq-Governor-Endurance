@@ -178,7 +178,7 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->temperature_diff = TEMP_DIFF_LITTLE;
 		tunable->max_throttle_step = MAX_STEP_LITTLE;
 	}
-	else if(policy->cpu >= NR_BIG){
+	else if(policy->cpu <= NR_BIG){
 		tunable->throttle_temperature = THROTTLE_TEMP_BIG;
 		tunable->temperature_diff = TEMP_DIFF_BIG;
 		tunable->max_throttle_step = MAX_STEP_BIG;
