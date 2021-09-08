@@ -52,7 +52,7 @@ struct cluster_tunables {
 	unsigned short temperature_diff;	// Temperature Diffrence
 	unsigned short max_throttle_step;	// Max Steps to be throttled
 	unsigned short idle_threshold;	// Threshold for idleing
-	unsigned int idle_freq;		// Frequency during idle
+	unsigned int idle_frequency;		// Frequency during idle
 };
 
 /* Main Function prototypes */

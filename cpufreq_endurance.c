@@ -187,7 +187,7 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->max_throttle_step = MAX_STEP_BIG;
 		tunable->idle_threshold = B_IDLE_TRESH;
 	}
-	tunable->idle_freq = cluster->freq_table[0].frequency;
+	tunable->idle_frequency = cluster->freq_table[0].frequency;
 	
 end:
 	cluster->cached_tunables = tunable;
@@ -416,7 +416,7 @@ static void idle_threshold_check(struct cluster_prop *cluster ,int load_avg)
 		nr_cpu_idle++;
 		cluster->idle_cpu = 1;
 	}
-	else if(policy->cur == tunable->idle_freq){
+	else if(policy->cur == tunable->idle_frequency){
 		nr_cpu_idle--;
 		cluster->idle_cpu = 0;
 		if(!nr_cpu_idle){
@@ -480,7 +480,7 @@ static inline void do_cpufreq_mitigation(struct cpufreq_policy *policy,
 	PDEBUG("THROTTLE to %u from %u level:%d max_lvl:%d cpu:%d",cluster->freq_table[cluster->cur_level].frequency,
 			policy->cur,cluster->cur_level,cluster->nr_levels, policy->cpu);
 	if(cluster->idle_cpu)
-		policy->max = tunable->idle_freq;
+		policy->max = tunable->idle_frequency;
 	else{
 		policy->max = cluster->freq_table[cluster->cur_level].frequency;
 		cluster->prev_freq = policy->max;
