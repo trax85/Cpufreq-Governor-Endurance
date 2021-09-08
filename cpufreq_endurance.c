@@ -599,6 +599,50 @@ static ssize_t store_max_throttle_step(struct cpufreq_policy *policy,
  	return count;
 }
 
+static ssize_t show_idle_frequency(struct cluster_tunables *tunable, char *buf)
+{
+	if(!tunable)
+		return 0;
+
+	return sprintf(buf, "%u\n", tunable->idle_frequency);
+}
+
+static ssize_t store_idle_frequency(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	struct cluster_tunables *tunable = policy->governor_data;
+	unsigned int idle_frequency;
+
+ 	if (kstrtouint(buf, 10, &idle_frequency))
+ 		return -EINVAL;
+
+ 	tunable->idle_frequency = idle_frequency;
+
+ 	return count;
+}
+
+static ssize_t show_idle_threshold(struct cluster_tunables *tunable, char *buf)
+{
+	if(!tunable)
+		return 0;
+
+	return sprintf(buf, "%u\n", tunable->idle_threshold);
+}
+
+static ssize_t store_idle_threshold(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	struct cluster_tunables *tunable = policy->governor_data;
+	unsigned int idle_threshold;
+
+ 	if (kstrtouint(buf, 10, &idle_threshold))
+ 		return -EINVAL;
+
+ 	tunable->idle_threshold = idle_threshold;
+
+ 	return count;
+}
+
 /*
  * Create show/store routines (pulled from interactive governor)
  * pol: One governor instance per struct cpufreq_policy
@@ -624,6 +668,8 @@ store_gov_pol_sys(file_name)
 show_store_gov_pol_sys(throttle_temperature);
 show_store_gov_pol_sys(temperature_diff);
 show_store_gov_pol_sys(max_throttle_step);
+show_store_gov_pol_sys(idle_frequency);
+show_store_gov_pol_sys(idle_threshold);
 
 #define gov_pol_attr_rw(_name)					\
 static struct freq_attr _name##_gov_pol =				\
@@ -635,11 +681,15 @@ __ATTR(_name, 0664, show_##_name##_gov_pol, store_##_name##_gov_pol)
 gov_sys_pol_attr_rw(throttle_temperature);
 gov_sys_pol_attr_rw(temperature_diff);
 gov_sys_pol_attr_rw(max_throttle_step);
+gov_sys_pol_attr_rw(idle_frequency);
+gov_sys_pol_attr_rw(idle_threshold);
 
 static struct attribute *edgov_attributes[] = {
 	&throttle_temperature_gov_pol.attr,
 	&temperature_diff_gov_pol.attr,
 	&max_throttle_step_gov_pol.attr,
+	&idle_frequency_gov_pol.attr,
+	&idle_threshold_gov_pol.attr,
 	NULL
 };
 
