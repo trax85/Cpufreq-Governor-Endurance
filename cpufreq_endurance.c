@@ -409,8 +409,11 @@ static void idle_threshold_check(struct cluster_prop *cluster ,int load_avg)
 
 	threshold = tunable->idle_threshold - load_avg;
 	if(threshold > 0){
-		if(policy->cur == tunable->idle_freq)
+		if(cluster->idle_cpu){
+			if(policy->cur != tunable->idle_frequency)
+				goto update;
 			return;
+		}
 		idle_loop = 1;
 		nap_time_ms = 500;
 		nr_cpu_idle++;
@@ -424,6 +427,7 @@ static void idle_threshold_check(struct cluster_prop *cluster ,int load_avg)
 			nap_time_ms = 1500;
 		}
 	}
+update:
 	do_cpufreq_mitigation(policy, cluster);
 }
 
