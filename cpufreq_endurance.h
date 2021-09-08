@@ -21,10 +21,8 @@ static unsigned int cfe_debug = 1;
 #define CLUSTER_NR 2			// Number of clusters device has
 #define MAX_STEP_LITTLE 4		// Max steps the core should throttle down
 #define MAX_STEP_BIG 5
-#define L_IDLE_TRESH	35
-#define L_BELO_TRESHFREQ	960000
-#define B_IDLE_TRESH	30
-#define B_BELO_TRESHFREQ	998400
+#define L_IDLE_TRESH	35		// Idle threshold for little cluster
+#define B_IDLE_TRESH	30		// Idle threshold for Big cluster
 
 
 struct cluster_prop {

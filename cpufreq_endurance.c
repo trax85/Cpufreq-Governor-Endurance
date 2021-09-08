@@ -180,15 +180,14 @@ int init_tunables(struct cpufreq_policy *policy)
 		tunable->temperature_diff = TEMP_DIFF_LITTLE;
 		tunable->max_throttle_step = MAX_STEP_LITTLE;
 		tunable->idle_threshold = L_IDLE_TRESH;
-		tunable->idle_freq = L_BELO_TRESHFREQ;
 	}
 	else if(policy->cpu <= NR_BIG){
 		tunable->throttle_temperature = THROTTLE_TEMP_BIG;
 		tunable->temperature_diff = TEMP_DIFF_BIG;
 		tunable->max_throttle_step = MAX_STEP_BIG;
 		tunable->idle_threshold = B_IDLE_TRESH;
-		tunable->idle_freq = B_BELO_TRESHFREQ;
 	}
+	tunable->idle_freq = cluster->freq_table[0].frequency;
 	
 end:
 	cluster->cached_tunables = tunable;
