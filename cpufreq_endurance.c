@@ -10,6 +10,10 @@
  *  as published by the Free Software Foundation; version 2
  *  of the License.
  *
+ *
+ *  Endurance V2:- Add support for idling CPU cores to lower idle frequency
+ *		   and modify code for optimal use of idle frequency. Add idle_threshold
+ *		   and idle Frequency as two more parameters tunabled from user space.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -18,6 +22,7 @@
 #include <linux/cpufreq.h>
 #include <linux/thermal.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <linux/workqueue.h>
@@ -450,7 +455,7 @@ static int load_change_callback(struct notifier_block *nb, unsigned long val,
 		struct cluster_prop *cluster = per_cpu(cluster_nr, cpu);
 		if(cluster && cluster->gov_enabled){
 			temp = update_load(cpu);
-			PDEBUG("load:%d", temp);
+			PDEBUG("load:%d core %d", temp, cpu);
 			if(temp >= 60)
 				load += 400;
 			load += temp;

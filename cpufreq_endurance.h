@@ -13,7 +13,7 @@ static unsigned int cfe_debug = 1;
 /* Individual device default configuration */
 #define NR_LITTLE 3			// starting little cluster cpu id
 #define NR_BIG	5			// starting big cluster cpu id
-#define SENSOR_ID 5			// Sensor ID in themal zone
+#define SENSOR_ID 6			// Sensor ID in themal zone
 #define THROTTLE_TEMP_LITTLE 44	// Throttle temperature of little cluster
 #define THROTTLE_TEMP_BIG 46		// Throttle temperature of big cluster
 #define TEMP_DIFF_LITTLE 3		// Temprature diffrence after which core must be throttled
@@ -30,7 +30,7 @@ struct cluster_prop {
 	unsigned short cur_level;		// Stores current level of throttle
 	unsigned int prev_freq;		// Holds memory of previous cpufreq
 	bool gov_enabled;			// Governor state of cluster
-	bool idle_cpu;
+	bool idle_cpu;				// Test bool for checking cluster idle
 	unsigned int max_freq;			// Holds memory of max cpufreq avilable at the time
 	struct cpufreq_policy *ppol;		// Points to the policy struct of the respective cluster
 	struct cluster_tunables *cached_tunables;	// Hold saved tunables parameters and restore when restarted
