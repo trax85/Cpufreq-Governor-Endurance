@@ -21,23 +21,23 @@
  3             |      960000                                                __
  4             |      1017600           -----> tunable->max_throttle_step     |
  5             |      1190400                                                 |
- 6             |      1305600                                                 |-> cluster>cur_level can move up/down withing this
+ 6             |      1305600                                                 |-> cluster>cur_level can move up/down within this
  7             |      1382400           -----> cluster>cur_level              | 
  8             |      1401600           -----> cluster->nr_levels           __|
 ```
 ## Working
 Using the above representation we will see how the governor works. The `cluster->nr_levels` is a fixed variable that doesn't change once governor is initilized.
-`cluster>cur_level` holds the current frequency step the CPU is at, initially it's at highest step in the unthrottled state. The function `update_sensor_data()` gets the 
+`cluster->cur_level` holds the current frequency step the CPU is at, initially it's at highest step in the unthrottled state. The function `update_sensor_data()` gets the 
 latest temperature reading for the defined sensor. This temprature(in Celsius) is used to throttle the cores. The temprature reading when it passes the Trip points 
 defined by `throttle_temperature` the function `govern_cpu()` checks if the cpu must be throttled down. After the trip points are crossed the governor throttles down the 
 frequency by 'one step' each time the temprature goes up by value defined by `temprature_diff`. `thermal_monitor->cur_temps` holds the current temprature for the defined 
 sensor. The poll time for `govern_cpu` is 1500ms.
 
 To explain this let us take an example using the above representation. `cluster->nr_level` = 8  ,`tunable->max_throttle_step` = 4 ,`throttle_temperature` = 40, 
-`temprature_diff` = 2,`thermal_monitor->cur_temps` = 40. Using this, Initially the `cluster>cur_level` is equal to `cluster->nr_levels`. Now the 
+`temprature_diff` = 2,`thermal_monitor->cur_temps` = 40. Using this, Initially the `cluster->cur_level` is equal to `cluster->nr_levels`. Now the 
 `thermal_monitor->cur_temps` have increased to 40 which is also the Trip point(`throttle_temperature`) for the governor so the  `govern_cpu()` does the first throttle by 
-decrementing `cluster>cur_level` by one, changing `cluster>cur_level` from 8 to 7 and the `cluster>cur_level` is applied to CPU, and then from here on out the governor 
-polls for every rise equal to `temprature_diff` the governor throttle's 'down' CPU by decrementing `cluster>cur_level` by one, until it reaches `max_throttle_step` after 
+decrementing `cluster->cur_level` by one, changing `cluster->cur_level` from 8 to 7 and the `cluster->cur_level` is applied to CPU, and then from here on out the governor 
+polls for every rise equal to `temprature_diff` the governor throttle's 'down' CPU by decrementing `cluster->cur_level` by one, until it reaches `max_throttle_step` after 
 which any temprature rise will have no affect on frequency of the CPU. Same is true if the CPU is already throttled and temperature is falling, it thottle's 'up' CPU for 
 every drop equal to `temprature_diff`, until it reaches max level `cluster->nr_levels` at which point the CPU is no more Hot and temprature has dropped below 
 `throttle_temperature`.
