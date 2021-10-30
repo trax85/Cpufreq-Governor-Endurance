@@ -30,9 +30,8 @@
 #include "cpufreq_endurance.h"
 
 unsigned int nap_time_ms = 1500;			// Governor sleep Timeout in millisecond
-static unsigned int nr_cpu_idle = 0;
+atomic_t nr_cpu_idle = ATOMIC_INIT(0);
 /* governor status check variables */
-static bool idle_loop = 0;
 unsigned int governor_enabled = 0;
 
 ATOMIC_NOTIFIER_HEAD(therm_alert_notifier_head);
@@ -419,16 +418,13 @@ static void idle_threshold_check(struct cluster_prop *cluster ,int load_avg)
 				goto update;
 			return;
 		}
-		idle_loop = 1;
 		nap_time_ms = 500;
-		nr_cpu_idle++;
+		atomic_inc(&nr_cpu_idle);
 		cluster->idle_cpu = 1;
 	}
 	else if(policy->cur == tunable->idle_frequency){
-		nr_cpu_idle--;
 		cluster->idle_cpu = 0;
-		if(!nr_cpu_idle){
-			idle_loop = 0;
+		if(atomic_dec_and_test(&nr_cpu_idle))
 			nap_time_ms = 1500;
 		}
 	}
@@ -516,7 +512,7 @@ static int cfe_thermal_monitor_task(void *data)
 			schedule();
 		}
 		/* skip thermal checks if both clusters idle */
-		if(idle_loop && (nr_cpu_idle == 2))
+		if(atomic_read(&nr_cpu_idle) == CLUSTER_NR)
 			goto skip;
 
 		/* get updated thermal reading */
