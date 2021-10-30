@@ -58,7 +58,7 @@ struct cluster_tunables {
 /* Main Function prototypes */
 int get_cpufreq_table(struct cpufreq_policy *);
 int init_cpufreq_table(struct cpufreq_policy *);
-void cfe_reset_params(struct cpufreq_policy *,bool);
+void cfe_reset_params(struct cpufreq_policy *);
 int init_tunables(struct cpufreq_policy *);
 static inline int update_sensor_data(void);
 static inline void do_cpufreq_mitigation(struct cpufreq_policy *, 

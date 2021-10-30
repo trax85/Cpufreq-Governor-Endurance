@@ -98,7 +98,7 @@ setup_done:
 	 * before handing over to speedchange_task() thread for rest of cpu governing tasks.
 	 */
 	
-	cfe_reset_params(policy, 0);
+	cfe_reset_params(policy);
 	governor_enabled++;
 	cluster->gov_enabled = 1;
 	PDEBUG("governor state:%d",governor_enabled);
@@ -215,27 +215,17 @@ err:
  * cfe_reset_params() resets the cluster max_freq and nr_levels
  * this helps us to do correct thermal mitigation and dynamically switch between
  * frequency and allows users to have a certain degree of control on the max frequency
- * which has direct impact on how the thermal mitigation proceeds. it has two states
- * hard reset and soft reset state.
+ * which has direct impact on how the thermal mitigation proceeds.
  */
-void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
+void cfe_reset_params(struct cpufreq_policy *policy)
 {
 	struct cluster_prop *cluster = per_cpu(cluster_nr, policy->cpu);
-	struct cluster_tunables *tunable = policy->governor_data;
-	int temp = 0,lvl = 0,index = 0;
+	int index = 0;
 
-	if(!thermal_monitor || !cluster || !tunable)
+	if(!cluster)
 		return;
  	
  	mutex_lock(&rw_lock);
- 	/* check for reset state if its called by change due to one of the 
- 	 * governor parameters don't reset all parameters do soft reset.
- 	 * when policy max_freq is changed explictly by user go for hard
- 	 * reset.
- 	 */
- 	if(reset)
- 		goto soft_reset;
-
  		
 	/* policy limits change gets called multiple times eventhough change
 	 * happened only once so therefore add checks to see if the reset
@@ -256,30 +246,9 @@ void cfe_reset_params(struct cpufreq_policy *policy, bool reset)
 	cluster->cur_level = 0;
 	cluster->nr_levels = index;
 	cluster->max_freq = cluster->prev_freq = policy->max;
-
-soft_reset:
-	/* check if throttle down is required if required then loop until it
-	 * reaches its correct level else just update the frequency and set it
-	 * to new requested frequency. 
-	 */
-	if(thermal_monitor->cur_temps >= tunable->throttle_temperature){
-		temp = thermal_monitor->cur_temps - tunable->throttle_temperature;
-		if(temp)
-			temp = temp / tunable->temperature_diff;
-		temp += 1;
-	}
-	lvl = cluster->nr_levels - temp;
-	PDEBUG("go down by %d levels",temp);
-	if(cluster->cur_level != lvl){
-		cluster->cur_level = lvl;
-		do_cpufreq_mitigation(policy, cluster);
-	}
-	mutex_unlock(&rw_lock);
-	return;
 skip:
 	mutex_unlock(&rw_lock);
 }
-
 /*
  * update_sensor_data() get temperature reading from the desired sensor.
  * in case of failure to get current temperature from sensor it sets cur_temps to 0.
@@ -553,7 +522,7 @@ static ssize_t store_throttle_temperature(struct cpufreq_policy *policy,
  		return -EINVAL;
 
  	tunable->throttle_temperature = throttle_temperature;
- 	cfe_reset_params(policy, 1);
+ 	cfe_reset_params(policy);
 
  	return count;
 }
@@ -576,7 +545,7 @@ static ssize_t store_temperature_diff(struct cpufreq_policy *policy,
  		return -EINVAL;
 
  	tunable->temperature_diff = temperature_diff;
- 	cfe_reset_params(policy, 1);
+ 	cfe_reset_params(policy);
 
  	return count;
 }
@@ -599,7 +568,7 @@ static ssize_t store_max_throttle_step(struct cpufreq_policy *policy,
  		return -EINVAL;
 
  	tunable->max_throttle_step = max_throttle_step;
- 	cfe_reset_params(policy, 1);
+ 	cfe_reset_params(policy);
 
  	return count;
 }
@@ -778,7 +747,8 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		mutex_unlock(&gov_lock);
 		break;
 	case CPUFREQ_GOV_LIMITS:
-		cfe_reset_params(policy, 0);
+		cfe_reset_params(policy);
+		govern_cpu(cluster);
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
