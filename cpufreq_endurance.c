@@ -395,7 +395,6 @@ static void idle_threshold_check(struct cluster_prop *cluster ,int load_avg)
 		cluster->idle_cpu = 0;
 		if(atomic_dec_and_test(&nr_cpu_idle))
 			nap_time_ms = 1500;
-		}
 	}
 update:
 	do_cpufreq_mitigation(policy, cluster);
@@ -444,7 +443,7 @@ static struct notifier_block load_chg_notifier_block = {
  * do_cpufreq_mitigation() it modifies the policy max frequency to the latest max
  * updated by the calling function and sets the frequency on the cluster.
  */
-static inline void do_cpufreq_mitigation(struct cpufreq_policy *policy,
+static inline int do_cpufreq_mitigation(struct cpufreq_policy *policy,
 							struct cluster_prop *cluster)
 {
 	struct cluster_tunables *tunable = policy->governor_data;
@@ -456,11 +455,13 @@ static inline void do_cpufreq_mitigation(struct cpufreq_policy *policy,
 	if(cluster->idle_cpu)
 		policy->max = tunable->idle_frequency;
 	else{
+		PDEBUG("Out Of Idle\n");
 		policy->max = cluster->freq_table[cluster->cur_level].frequency;
 		cluster->prev_freq = policy->max;
 	}
 	__cpufreq_driver_target(policy, policy->max,
 						CPUFREQ_RELATION_C);
+	return 0;
 }
 
 /*
@@ -748,7 +749,7 @@ static int cpufreq_governor_endurance(struct cpufreq_policy *policy,
 		break;
 	case CPUFREQ_GOV_LIMITS:
 		cfe_reset_params(policy);
-		govern_cpu(cluster);
+		govern_cpu(per_cpu(cluster_nr,policy->cpu));
 		break;
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
